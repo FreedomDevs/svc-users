@@ -1,9 +1,6 @@
 package user
 
 import (
-	"errors"
-	"strings"
-
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
@@ -14,10 +11,7 @@ type Repository interface {
 	GetByName(name string) ([]User, error)
 	List() ([]User, error)
 	Delete(id uuid.UUID) error
-	SetRoles(id uuid.UUID, roles []string) error
-	AddRoles(id uuid.UUID, roles []string) error
-	RemoveRoles(id uuid.UUID, roles []string) error
-	HasRolesAll(id uuid.UUID, roles []string) (bool, error)
+	SetPermissions(id uuid.UUID, mask int64) error
 }
 
 type repo struct{ db *gorm.DB }
@@ -36,7 +30,7 @@ func (r *repo) GetByID(id uuid.UUID) (*User, error) {
 
 func (r *repo) GetByName(name string) ([]User, error) {
 	var list []User
-	if err := r.db.Where("LOWER(name) LIKE ?", "%"+strings.ToLower(name)+"%").Find(&list).Error; err != nil {
+	if err := r.db.Where("LOWER(name) LIKE LOWER(?)", "%"+name+"%").Find(&list).Error; err != nil {
 		return nil, err
 	}
 	return list, nil
@@ -61,89 +55,6 @@ func (r *repo) Delete(id uuid.UUID) error {
 	return nil
 }
 
-func uniqueStrings(in []string) []string {
-	m := map[string]struct{}{}
-	var out []string
-	for _, v := range in {
-		v = strings.TrimSpace(v)
-		if v == "" {
-			continue
-		}
-		if _, ok := m[v]; !ok {
-			m[v] = struct{}{}
-			out = append(out, v)
-		}
-	}
-	return out
-}
-
-func (r *repo) SetRoles(id uuid.UUID, roles []string) error {
-	roles = uniqueStrings(roles)
-	return r.db.Model(&User{}).Where("id = ?", id).Update("roles", roles).Error
-}
-
-func (r *repo) AddRoles(id uuid.UUID, roles []string) error {
-	if len(roles) == 0 {
-		return nil
-	}
-	var u User
-	if err := r.db.Select("id", "roles").First(&u, "id=?", id).Error; err != nil {
-		return err
-	}
-	m := map[string]struct{}{}
-	for _, r := range u.Roles {
-		m[r] = struct{}{}
-	}
-	for _, r := range roles {
-		if strings.TrimSpace(r) != "" {
-			m[r] = struct{}{}
-		}
-	}
-	var merged []string
-	for k := range m {
-		merged = append(merged, k)
-	}
-	return r.db.Model(&User{}).Where("id=?", id).Update("roles", merged).Error
-}
-
-func (r *repo) RemoveRoles(id uuid.UUID, roles []string) error {
-	var u User
-	if err := r.db.Select("id", "roles").First(&u, "id=?", id).Error; err != nil {
-		return err
-	}
-	remove := map[string]struct{}{}
-	for _, r := range roles {
-		remove[strings.TrimSpace(r)] = struct{}{}
-	}
-	var keep []string
-	for _, r := range u.Roles {
-		if _, ok := remove[r]; !ok {
-			keep = append(keep, r)
-		}
-	}
-	return r.db.Model(&User{}).Where("id=?", id).Update("roles", keep).Error
-}
-
-func (r *repo) HasRolesAll(id uuid.UUID, roles []string) (bool, error) {
-	if len(roles) == 0 {
-		return false, errors.New("no roles provided")
-	}
-	var u User
-	if err := r.db.Select("id", "roles").First(&u, "id=?", id).Error; err != nil {
-		return false, err
-	}
-	set := map[string]struct{}{}
-	for _, r := range u.Roles {
-		set[r] = struct{}{}
-	}
-	for _, q := range roles {
-		q = strings.TrimSpace(q)
-		if q == "" {
-			continue
-		}
-		if _, ok := set[q]; !ok {
-			return false, nil
-		}
-	}
-	return true, nil
+func (r *repo) SetPermissions(id uuid.UUID, mask int64) error {
+	return r.db.Model(&User{}).Where("id = ?", id).Update("permissions", mask).Error
 }

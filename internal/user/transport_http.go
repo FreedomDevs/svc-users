@@ -2,11 +2,11 @@ package user
 
 import (
 	"encoding/json"
-	"net/http"
-	"strings"
-
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"net/http"
+	"strings"
+	"time"
 )
 
 type Handler struct{ svc Service }
@@ -19,8 +19,8 @@ func (h *Handler) Routes() chi.Router {
 	r.Get("/", h.listUsers)
 	r.Get("/{id}", h.getUser)
 	r.Delete("/{id}", h.deleteUser)
-	r.Patch("/{id}/roles", h.updateRoles)
-	r.Get("/{id}/has-roles/{roles}", h.hasRoles)
+	r.Patch("/{id}/permissions", h.updatePermissions)
+	r.Get("/{id}/has-perms/{perms}", h.hasPermissions)
 	return r
 }
 
@@ -80,21 +80,21 @@ func (h *Handler) deleteUser(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, err)
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	writeJSON(w, http.StatusNoContent, nil)
 }
 
-func (h *Handler) updateRoles(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) updatePermissions(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	var req UpdateRolesRequest
+	var req UpdatePermissionsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	u, err := h.svc.UpdateRoles(r.Context(), id, req)
+	u, err := h.svc.UpdatePermissions(r.Context(), id, req)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -102,15 +102,15 @@ func (h *Handler) updateRoles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, u)
 }
 
-func (h *Handler) hasRoles(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) hasPermissions(w http.ResponseWriter, r *http.Request) {
 	id, err := uuid.Parse(chi.URLParam(r, "id"))
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err)
 		return
 	}
-	rolesParam := chi.URLParam(r, "roles")
-	roles := strings.Split(rolesParam, ",")
-	ok, err := h.svc.HasRolesAll(r.Context(), id, roles)
+	permsParam := chi.URLParam(r, "perms")
+	perms := strings.Split(permsParam, ",")
+	ok, err := h.svc.HasPermissions(r.Context(), id, perms)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err)
 		return
@@ -119,11 +119,59 @@ func (h *Handler) hasRoles(w http.ResponseWriter, r *http.Request) {
 }
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
+	var resp ApiResponse
+
+	switch u := v.(type) {
+	case *User:
+		atomicPerms := PermissionsToAtomicStrings(u.Permissions)
+
+		resp = ApiResponse{Success: true, Data: struct {
+			ID          uuid.UUID `json:"id"`
+			Name        string    `json:"name"`
+			Permissions []string  `json:"permissions"`
+			CreatedAt   time.Time `json:"created_at"`
+		}{
+			ID:          u.ID,
+			Name:        u.Name,
+			Permissions: atomicPerms,
+			CreatedAt:   u.CreatedAt,
+		}}
+	case []User:
+		users := make([]struct {
+			ID          uuid.UUID `json:"id"`
+			Name        string    `json:"name"`
+			Permissions []string  `json:"permissions"`
+			CreatedAt   time.Time `json:"created_at"`
+		}, len(u))
+
+		for i, usr := range u {
+			users[i] = struct {
+				ID          uuid.UUID `json:"id"`
+				Name        string    `json:"name"`
+				Permissions []string  `json:"permissions"`
+				CreatedAt   time.Time `json:"created_at"`
+			}{
+				ID:          usr.ID,
+				Name:        usr.Name,
+				Permissions: PermissionsToAtomicStrings(usr.Permissions),
+				CreatedAt:   usr.CreatedAt,
+			}
+		}
+
+		resp = ApiResponse{Success: true, Data: users}
+	default:
+		resp = ApiResponse{Success: true, Data: v}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
-	json.NewEncoder(w).Encode(v)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func writeErr(w http.ResponseWriter, code int, err error) {
-	writeJSON(w, code, map[string]string{"error": err.Error()})
+	resp := ApiResponse{Success: false, Error: err.Error()}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(resp)
 }
+

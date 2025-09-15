@@ -1,13 +1,14 @@
 import {
   BadRequestException,
   Injectable,
-  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
 import { CreateUserDto } from './dto';
-import { UserResponse } from './response';
+import { errorResponse, successResponse, UserResponse } from './response';
+import { Roles } from '@prisma/client';
+import { ServiceResponse } from './users.type';
 
 @Injectable()
 export class UsersService {
@@ -15,34 +16,20 @@ export class UsersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // TODO: вынести в отдельный файл
-  private successResponse<T>(message = 'Success', data?: T) {
-    if (data === undefined || data === null) {
-      return {
-        success: true,
-        message,
-      };
+  private getUserOrThrow(resp: ServiceResponse<UserResponse>): UserResponse {
+    if (!resp.data) {
+      this.logger.warn(`User not found`);
+      throw new NotFoundException(errorResponse('User not found!'));
     }
-
-    return {
-      success: true,
-      message,
-      data,
-    };
+    return resp.data;
   }
 
-  // TODO: вынести в отдельный файл
-  private errorResponse(message: string) {
-    return {
-      success: false,
-      message,
-    };
-  }
-
-  async create(createUserDto: CreateUserDto) {
+  async create(
+    createUserDto: CreateUserDto,
+  ): Promise<ServiceResponse<UserResponse>> {
     if (!createUserDto.name || !createUserDto.password) {
       throw new BadRequestException(
-        this.errorResponse('Name and password are required.'),
+        errorResponse('Name and password are required.'),
       );
     }
 
@@ -56,13 +43,10 @@ export class UsersService {
 
     this.logger.log(`User created: ${user.id} (${user.name})`);
 
-    return this.successResponse(
-      'User created successfully',
-      new UserResponse(user),
-    );
+    return successResponse('User created successfully', new UserResponse(user));
   }
 
-  async findOne(idOrName: string) {
+  async findOne(idOrName: string): Promise<ServiceResponse<UserResponse>> {
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [{ name: idOrName }, { id: idOrName }],
@@ -71,17 +55,18 @@ export class UsersService {
 
     if (!user) {
       this.logger.warn(`User not found: ${idOrName}`);
-      throw new NotFoundException(this.errorResponse('User not found!'));
+      throw new NotFoundException(errorResponse('User not found!'));
     }
 
     this.logger.log(`User fetched: ${user.id} (${user.name})`);
-    return this.successResponse(
-      'User found successfully',
-      new UserResponse(user),
-    );
+    return successResponse('User found successfully', new UserResponse(user));
   }
 
-  async findAll(search?: string, page = 0, limit = 10) {
+  async findAll(
+    search?: string,
+    page = 0,
+    limit = 10,
+  ): Promise<ServiceResponse<UserResponse[]>> {
     const users = await this.prisma.user.findMany({
       where: search
         ? {
@@ -103,23 +88,18 @@ export class UsersService {
     }
 
     this.logger.log(`Fetched ${users.length} users`);
-    return this.successResponse(
+    return successResponse(
       'Users fetched successfully',
       users.map((user) => new UserResponse(user)),
     );
   }
 
-  async delete(idOrName: string) {
+  async delete(idOrName: string): Promise<ServiceResponse<null>> {
     if (!idOrName) {
-      throw new BadRequestException(this.errorResponse('ID is required!'));
+      throw new BadRequestException(errorResponse('ID is required!'));
     }
 
-    const response = await this.findOne(idOrName);
-    const user = response.data;
-
-    if (!user) {
-      throw new NotFoundException(this.errorResponse('User not found!'));
-    }
+    const user = this.getUserOrThrow(await this.findOne(idOrName));
 
     this.logger.log(`User deleted: ${user.id} (${user.name})`);
 
@@ -127,8 +107,66 @@ export class UsersService {
       where: { id: user.id },
     });
 
-    return this.successResponse('User deleted');
+    return successResponse('User deleted');
   }
 
-  //  TODO: изменение ролей, проверка на то что есть ли у пользователя роль
+  async hasRole(
+    idOrName: string,
+    rolesToCheck: Roles[],
+  ): Promise<ServiceResponse<Record<string, boolean>>> {
+    const user = this.getUserOrThrow(await this.findOne(idOrName));
+
+    const result: Record<string, boolean> = {};
+    rolesToCheck.forEach((role) => {
+      result[role] = user.roles.includes(role);
+    });
+
+    return successResponse('Roles checked successfully', result);
+  }
+
+  async addRoles(
+    idOrName: string,
+    rolesToAdd: Roles[],
+  ): Promise<ServiceResponse<UserResponse>> {
+    const user = this.getUserOrThrow(await this.findOne(idOrName));
+
+    const newRoles = rolesToAdd.filter((r) => !user.roles.includes(r));
+    if (newRoles.length === 0) {
+      throw new BadRequestException(
+        errorResponse('User already has all these roles'),
+      );
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { roles: [...user.roles, ...newRoles] },
+    });
+
+    return successResponse(
+      'Roles update successfully',
+      new UserResponse(updatedUser),
+    );
+  }
+
+  async removeRoles(
+    idOrName: string,
+    rolesToRemove: Roles[],
+  ): Promise<ServiceResponse<UserResponse>> {
+    const user = this.getUserOrThrow(await this.findOne(idOrName));
+
+    const remainingRoles = user.roles.filter((r) => !rolesToRemove.includes(r));
+    if (remainingRoles.length === user.roles.length) {
+      throw new BadRequestException('User does not have any of these roles');
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { roles: remainingRoles },
+    });
+
+    return successResponse(
+      'Roles update successfully',
+      new UserResponse(updatedUser),
+    );
+  }
 }

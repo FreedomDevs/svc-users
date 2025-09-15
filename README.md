@@ -96,13 +96,57 @@ DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
 
 **GET** `/users`
 
+**Query Parameters:**
+- `search` (optional) — часть имени для фильтрации
+- `page` (optional, default = 0) — номер страницы
+- `limit` (optional, default = 10) — количество пользователей на странице
+
 **Response:**
 
 ```json
 {
   "success": true,
   "message": "Users fetched successfully",
-  "data": [ ... ]
+  "data": [
+    {
+      "id": "abc123",
+      "name": "John",
+      "roles": ["USER"],
+      "createdAt": "2025-09-15T12:00:00.000Z",
+      "updatedAt": "2025-09-15T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Example Request:**
+
+```
+GET /users?search=fok&page=1&limit=5
+```
+
+**Example Response:**
+
+```json
+{
+  "success": true,
+  "message": "Users fetched successfully",
+  "data": [
+    {
+      "id": "abc123",
+      "name": "foksik",
+      "roles": ["USER"],
+      "createdAt": "2025-09-15T12:00:00.000Z",
+      "updatedAt": "2025-09-15T12:00:00.000Z"
+    },
+    {
+      "id": "def456",
+      "name": "Foks_f",
+      "roles": ["USER"],
+      "createdAt": "2025-09-15T12:05:00.000Z",
+      "updatedAt": "2025-09-15T12:05:00.000Z"
+    }
+  ]
 }
 ```
 
@@ -160,6 +204,6 @@ nest start
 * [ ] Добавить аутентификацию через svc-auth и svc-keys
 * [X] Логирование действий пользователей
 * [ ] Тесты для всех CRUD методов
-* [ ] Добавить пагинацию и фильтрацию для `findAll`
+* [X] Добавить пагинацию и фильтрацию для `findAll`
 * [X] Реализовать все методы в controller
 * [ ] Добавить роли и права доступа (RBAC)

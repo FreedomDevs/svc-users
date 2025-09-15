@@ -81,14 +81,25 @@ export class UsersService {
     );
   }
 
-  async findAll() {
-    const users = await this.prisma.user.findMany();
+  async findAll(search?: string, page = 0, limit = 10) {
+    const users = await this.prisma.user.findMany({
+      where: search
+        ? {
+            name: {
+              contains: search,
+              mode: 'insensitive',
+            },
+          }
+        : {},
+      skip: page * limit,
+      take: limit,
+    });
 
     if (users.length === 0) {
-      this.logger.error('No users found in database!');
-      throw new InternalServerErrorException(
-        this.errorResponse('Critical error: no users found in database!'),
+      this.logger.warn(
+        `No users found${search ? ` for search: "${search}"` : ''}`,
       );
+      throw new NotFoundException('No users found!');
     }
 
     this.logger.log(`Fetched ${users.length} users`);

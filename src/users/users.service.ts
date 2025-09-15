@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   InternalServerErrorException,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
@@ -10,6 +11,8 @@ import { UserResponse } from './response';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   // TODO: вынести в отдельный файл
@@ -51,6 +54,8 @@ export class UsersService {
       },
     });
 
+    this.logger.log(`User created: ${user.id} (${user.name})`);
+
     return this.successResponse(
       'User created successfully',
       new UserResponse(user),
@@ -65,9 +70,11 @@ export class UsersService {
     });
 
     if (!user) {
+      this.logger.warn(`User not found: ${idOrName}`);
       throw new NotFoundException(this.errorResponse('User not found!'));
     }
 
+    this.logger.log(`User fetched: ${user.id} (${user.name})`);
     return this.successResponse(
       'User found successfully',
       new UserResponse(user),
@@ -78,11 +85,13 @@ export class UsersService {
     const users = await this.prisma.user.findMany();
 
     if (users.length === 0) {
+      this.logger.error('No users found in database!');
       throw new InternalServerErrorException(
         this.errorResponse('Critical error: no users found in database!'),
       );
     }
 
+    this.logger.log(`Fetched ${users.length} users`);
     return this.successResponse(
       'Users fetched successfully',
       users.map((user) => new UserResponse(user)),
@@ -100,6 +109,8 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException(this.errorResponse('User not found!'));
     }
+
+    this.logger.log(`User deleted: ${user.id} (${user.name})`);
 
     await this.prisma.user.delete({
       where: { id: user.id },

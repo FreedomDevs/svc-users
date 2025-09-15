@@ -1,44 +1,18 @@
+version: '3.9'
+
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16
+    container_name: my_postgres
+    restart: always
     environment:
-      POSTGRES_USER: usersvc
-      POSTGRES_PASSWORD: usersvc
-      POSTGRES_DB: usersvc
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mydb
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U usersvc"]
-      interval: 2s
-      timeout: 2s
-      retries: 10
-      start_period: 5s
-
-  svc-users:
-    build: .
-    environment:
-      POSTGRES_DSN: "host=postgres port=5432 user=usersvc password=usersvc dbname=usersvc sslmode=disable"
-      APP_ENV: dev
-    depends_on:
-      postgres:
-        condition: service_healthy
-    ports:
-      - "9002:9002"
-    volumes:
-      - ./configs/:/configs:ro
-    restart: unless-stopped
-
-  prometheus:
-    image: prom/prometheus:latest
-    volumes:
-      - ./prometheus.yml:/etc/prometheus/prometheus.yml
-    ports:
-      - "9090:9090"
-    restart: unless-stopped
+      - postgres_data:/var/lib/postgresql/data
 
 volumes:
-  pgdata:
-
+  postgres_data:

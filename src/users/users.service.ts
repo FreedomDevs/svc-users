@@ -11,6 +11,7 @@ import { CreateUserDto } from './dto';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // TODO: вынести в отдельный файл
   private successResponse<T>(message = 'Success', data?: T) {
     if (data === undefined || data === null) {
       return {
@@ -26,6 +27,7 @@ export class UsersService {
     };
   }
 
+  // TODO: вынести в отдельный файл
   private errorResponse(message: string) {
     return {
       success: false,
@@ -95,4 +97,6 @@ export class UsersService {
 
     return this.successResponse('User deleted');
   }
+
+  //  TODO: изменение ролей, проверка на то что есть ли у пользователя роль
 }

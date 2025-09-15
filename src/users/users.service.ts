@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
@@ -64,8 +65,16 @@ export class UsersService {
     return this.successResponse('User found successfully', user);
   }
 
-  findAll() {
-    return this.prisma.user.findMany();
+  async findAll() {
+    const users = await this.prisma.user.findMany();
+
+    if (users.length === 0) {
+      throw new InternalServerErrorException(
+        this.errorResponse('Critical error: no users found in database!'),
+      );
+    }
+
+    return this.successResponse('Users fetched successfully', users);
   }
 
   async delete(idOrName: string) {

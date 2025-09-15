@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '@prisma/prisma.service';
 import { CreateUserDto } from './dto';
+import { UserResponse } from './response';
 
 @Injectable()
 export class UsersService {
@@ -50,7 +51,10 @@ export class UsersService {
       },
     });
 
-    return this.successResponse('User created successfully', user);
+    return this.successResponse(
+      'User created successfully',
+      new UserResponse(user),
+    );
   }
 
   async findOne(idOrName: string) {
@@ -64,7 +68,10 @@ export class UsersService {
       throw new NotFoundException(this.errorResponse('User not found!'));
     }
 
-    return this.successResponse('User found successfully', user);
+    return this.successResponse(
+      'User found successfully',
+      new UserResponse(user),
+    );
   }
 
   async findAll() {
@@ -76,7 +83,10 @@ export class UsersService {
       );
     }
 
-    return this.successResponse('Users fetched successfully', users);
+    return this.successResponse(
+      'Users fetched successfully',
+      users.map((user) => new UserResponse(user)),
+    );
   }
 
   async delete(idOrName: string) {

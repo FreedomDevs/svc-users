@@ -10,7 +10,14 @@ import { CreateUserDto } from './dto';
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private successResponse<T>(data: T, message = 'Success') {
+  private successResponse<T>(message = 'Success', data?: T) {
+    if (data === undefined || data === null) {
+      return {
+        success: true,
+        message,
+      };
+    }
+
     return {
       success: true,
       message,
@@ -40,7 +47,7 @@ export class UsersService {
       },
     });
 
-    return this.successResponse(user, 'User created successfully');
+    return this.successResponse('User created successfully', user);
   }
 
   async findOne(idOrName: string) {
@@ -54,6 +61,29 @@ export class UsersService {
       throw new NotFoundException(this.errorResponse('User not found!'));
     }
 
-    return this.successResponse(user, 'User found successfully');
+    return this.successResponse('User found successfully', user);
+  }
+
+  findAll() {
+    return this.prisma.user.findMany();
+  }
+
+  async delete(idOrName: string) {
+    if (!idOrName) {
+      throw new BadRequestException(this.errorResponse('ID is required!'));
+    }
+
+    const response = await this.findOne(idOrName);
+    const user = response.data;
+
+    if (!user) {
+      throw new NotFoundException(this.errorResponse('User not found!'));
+    }
+
+    await this.prisma.user.delete({
+      where: { id: user.id },
+    });
+
+    return this.successResponse('User deleted');
   }
 }

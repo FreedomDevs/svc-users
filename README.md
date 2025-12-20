@@ -33,7 +33,7 @@ DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
 
 ---
 
-## ⚙️ CRUD Методы
+## ⚙️ CRUD Методы (не актуально)
 
 ### 1. Создание пользователя
 

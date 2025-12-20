@@ -6,8 +6,8 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { UserCodes } from './users/users.codes';
-import { efail } from './common/response/response.helper';
-import { TraceInterceptor } from './common/interceptors/trace.interceptor';
+import { efail } from '@common/response/response.helper';
+import { TraceInterceptor } from '@common/interceptors/trace.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

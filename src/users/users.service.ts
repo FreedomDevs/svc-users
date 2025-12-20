@@ -8,9 +8,9 @@ import { PrismaService } from '@prisma/prisma.service';
 import { CreateUserDto } from './dto';
 import { UserResponse } from './response';
 import { Roles } from '@prisma/client';
-import { ApiSuccessResponse } from '../common/types/api-response.type';
+import { ApiSuccessResponse } from '@common/types/api-response.type';
 import { UserCodes } from './users.codes';
-import { ok } from '../common/response/response.helper';
+import { ok, efail } from '@common/response/response.helper';
 
 @Injectable()
 export class UsersService {
@@ -18,13 +18,36 @@ export class UsersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private getUserOrThrow(resp: ApiSuccessResponse<UserResponse>): UserResponse {
-    if (!resp?.data) {
+  private async getUserOrThrow(idOrName: string): Promise<UserResponse> {
+    const user = await this.prisma.user.findFirst({
+      where: { OR: [{ id: idOrName }, { name: idOrName }] },
+    });
+
+    if (!user) {
       throw new NotFoundException(
-        fail({ message: 'User not found', code: UserCodes.USER_NOT_FOUND }),
+        efail('User not found', UserCodes.USER_NOT_FOUND),
       );
     }
-    return resp.data;
+
+    return new UserResponse(user);
+  }
+
+  private validatePagination(page: number, pageSize: number) {
+    if (page < 1 || pageSize < 1) {
+      throw new BadRequestException(
+        efail(
+          'Page and pageSize must be greater than 0',
+          UserCodes.USER_INVALID_PAGINATION,
+        ),
+      );
+    }
+  }
+
+  private filterValidNewRoles(userRoles: Roles[], roles: Roles[]): Roles[] {
+    const validRoles = Object.values(Roles);
+    return roles.filter(
+      (r) => validRoles.includes(r) && !userRoles.includes(r),
+    );
   }
 
   async create(
@@ -32,10 +55,17 @@ export class UsersService {
   ): Promise<ApiSuccessResponse<UserResponse>> {
     if (!createUserDto.name || !createUserDto.password) {
       throw new BadRequestException(
-        fail({
-          message: 'Name and password are required',
-          code: UserCodes.USER_INVALID_DATA,
-        }),
+        efail('Name and password are required', UserCodes.USER_INVALID_DATA),
+      );
+    }
+
+    const existingUser = await this.prisma.user.findUnique({
+      where: { name: createUserDto.name },
+    });
+
+    if (existingUser) {
+      throw new BadRequestException(
+        efail('User with this name already exists', UserCodes.USER_DUPLICATE),
       );
     }
 
@@ -57,23 +87,8 @@ export class UsersService {
   }
 
   async findOne(idOrName: string): Promise<ApiSuccessResponse<UserResponse>> {
-    const user = await this.prisma.user.findFirst({
-      where: {
-        OR: [{ id: idOrName }, { name: idOrName }],
-      },
-    });
-
-    if (!user) {
-      throw new NotFoundException(
-        fail({ message: 'User not found', code: UserCodes.USER_NOT_FOUND }),
-      );
-    }
-
-    return ok(
-      new UserResponse(user),
-      'User fetched successfully',
-      UserCodes.USER_FETCHED_OK,
-    );
+    const user = await this.getUserOrThrow(idOrName);
+    return ok(user, 'User fetched successfully', UserCodes.USER_FETCHED_OK);
   }
 
   async findAll(
@@ -81,6 +96,8 @@ export class UsersService {
     page = 1,
     pageSize = 10,
   ): Promise<ApiSuccessResponse<{ users: UserResponse[]; pagination: any }>> {
+    this.validatePagination(page, pageSize);
+
     const [users, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
         where: search
@@ -114,14 +131,13 @@ export class UsersService {
   async delete(idOrName: string): Promise<ApiSuccessResponse<null>> {
     if (!idOrName) {
       throw new BadRequestException(
-        fail({ message: 'ID is required', code: UserCodes.USER_INVALID_DATA }),
+        efail('ID is required', UserCodes.USER_INVALID_DATA),
       );
     }
 
-    const user = this.getUserOrThrow(await this.findOne(idOrName));
+    const user = await this.getUserOrThrow(idOrName);
 
     await this.prisma.user.delete({ where: { id: user.id } });
-
     this.logger.log(`User deleted: ${user.id} (${user.name})`);
 
     return ok(null, 'User deleted successfully', UserCodes.USER_DELETED);
@@ -131,12 +147,10 @@ export class UsersService {
     idOrName: string,
     rolesToCheck: Roles[],
   ): Promise<ApiSuccessResponse<Record<string, boolean>>> {
-    const user = this.getUserOrThrow(await this.findOne(idOrName));
+    const user = await this.getUserOrThrow(idOrName);
 
     const result: Record<string, boolean> = {};
-    rolesToCheck.forEach((role) => {
-      result[role] = user.roles.includes(role);
-    });
+    rolesToCheck.forEach((role) => (result[role] = user.roles.includes(role)));
 
     return ok(result, 'Roles checked successfully', UserCodes.ROLES_UPDATED);
   }
@@ -145,15 +159,15 @@ export class UsersService {
     idOrName: string,
     rolesToAdd: Roles[],
   ): Promise<ApiSuccessResponse<UserResponse>> {
-    const user = this.getUserOrThrow(await this.findOne(idOrName));
+    const user = await this.getUserOrThrow(idOrName);
 
-    const newRoles = rolesToAdd.filter((r) => !user.roles.includes(r));
-    if (newRoles.length === 0) {
+    const newRoles = this.filterValidNewRoles(user.roles, rolesToAdd);
+    if (!newRoles.length) {
       throw new BadRequestException(
-        fail({
-          message: 'User already has all these roles',
-          code: UserCodes.USER_INVALID_DATA,
-        }),
+        efail(
+          'User already has all these roles or invalid roles provided',
+          UserCodes.USER_INVALID_DATA,
+        ),
       );
     }
 
@@ -161,6 +175,8 @@ export class UsersService {
       where: { id: user.id },
       data: { roles: [...user.roles, ...newRoles] },
     });
+
+    this.logger.log(`Roles added for user ${user.id}: ${newRoles.join(', ')}`);
 
     return ok(
       new UserResponse(updatedUser),
@@ -173,15 +189,22 @@ export class UsersService {
     idOrName: string,
     rolesToRemove: Roles[],
   ): Promise<ApiSuccessResponse<UserResponse>> {
-    const user = this.getUserOrThrow(await this.findOne(idOrName));
+    const user = await this.getUserOrThrow(idOrName);
 
     const remainingRoles = user.roles.filter((r) => !rolesToRemove.includes(r));
+
     if (remainingRoles.length === user.roles.length) {
       throw new BadRequestException(
-        fail({
-          message: 'User does not have any of these roles',
-          code: UserCodes.USER_INVALID_DATA,
-        }),
+        efail(
+          'User does not have any of these roles',
+          UserCodes.USER_INVALID_DATA,
+        ),
+      );
+    }
+
+    if (!remainingRoles.length) {
+      throw new BadRequestException(
+        efail('User must have at least one role', UserCodes.USER_INVALID_DATA),
       );
     }
 
@@ -189,6 +212,10 @@ export class UsersService {
       where: { id: user.id },
       data: { roles: remainingRoles },
     });
+
+    this.logger.log(
+      `Roles removed for user ${user.id}: ${rolesToRemove.join(', ')}`,
+    );
 
     return ok(
       new UserResponse(updatedUser),

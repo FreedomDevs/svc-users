@@ -19,7 +19,9 @@
     "noFallthroughCasesInSwitch": false,
     "paths": {
       "@prisma": ["src/prisma"],
-      "@prisma/*": ["src/prisma/*"]
+      "@prisma/*": ["src/prisma/*"],
+      "@common": ["src/common"],
+      "@common/*": ["src/common/*"]
     }
   }
 }

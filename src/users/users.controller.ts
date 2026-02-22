@@ -40,9 +40,14 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   async findOne(
     @Param('idOrName') idOrName: string,
+    @Query('psw') psw?: string,
   ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.logger.log(`GET /users/${idOrName}`);
-    return this.usersService.findOne(idOrName);
+    const includePassword: boolean = psw === 'true';
+    this.logger.log(
+      `GET /users/${idOrName} - includePassword: ${includePassword}`,
+    );
+
+    return this.usersService.findOne(idOrName, includePassword);
   }
 
   @Get()
@@ -52,8 +57,8 @@ export class UsersController {
     @Query('page') page = '1',
     @Query('limit') limit = '10',
   ): Promise<ApiSuccessResponse<{ users: UserResponse[]; pagination: any }>> {
-    const pageNum = parseInt(page, 10);
-    const limitNum = parseInt(limit, 10);
+    const pageNum: number = parseInt(page, 10);
+    const limitNum: number = parseInt(limit, 10);
     this.logger.log(
       `GET /users - search: ${search}, page: ${pageNum}, limit: ${limitNum}`,
     );

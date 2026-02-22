@@ -7,7 +7,7 @@ import {
 import { PrismaService } from '@prisma/prisma.service';
 import { CreateUserDto } from './dto';
 import { UserResponse } from './response';
-import { Roles } from '@prisma/client';
+import { Roles, User } from '@prisma/client';
 import { ApiSuccessResponse } from '@common/types/api-response.type';
 import { UserCodes } from './users.codes';
 import { ok, efail } from '@common/response/response.helper';
@@ -18,7 +18,7 @@ export class UsersService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private async getUserOrThrow(idOrName: string): Promise<UserResponse> {
+  private async getUserOrThrow(idOrName: string): Promise<User> {
     const user = await this.prisma.user.findFirst({
       where: { OR: [{ id: idOrName }, { name: idOrName }] },
     });
@@ -29,7 +29,7 @@ export class UsersService {
       );
     }
 
-    return new UserResponse(user);
+    return user;
   }
 
   private validatePagination(page: number, pageSize: number) {
@@ -86,9 +86,17 @@ export class UsersService {
     );
   }
 
-  async findOne(idOrName: string): Promise<ApiSuccessResponse<UserResponse>> {
+  async findOne(
+    idOrName: string,
+    includePassword: boolean,
+  ): Promise<ApiSuccessResponse<UserResponse>> {
     const user = await this.getUserOrThrow(idOrName);
-    return ok(user, 'User fetched successfully', UserCodes.USER_FETCHED_OK);
+
+    return ok(
+      new UserResponse(user, includePassword),
+      'User fetched successfully',
+      UserCodes.USER_FETCHED_OK,
+    );
   }
 
   async findAll(

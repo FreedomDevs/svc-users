@@ -10,7 +10,7 @@ jobs:
     name: Setup Node.js and Install Dependencies
     runs-on: ubuntu-latest
     outputs:
-      cache-hit: ${{ steps.cache-deps.outputs.cache-hit }}
+      node-modules-artifact: ${{ steps.upload-node-modules.outputs.artifact-name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -33,6 +33,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Upload node_modules
+        id: upload-node-modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: node_modules
+          path: node_modules
+
   lint:
     name: Lint & Format Check
     runs-on: ubuntu-latest
@@ -45,7 +52,12 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20.19.6
-          cache: 'npm'
+
+      - name: Download node_modules from setup
+        uses: actions/download-artifact@v4
+        with:
+          name: node_modules
+          path: ./node_modules
 
       - name: Lint code
         run: npm run lint
@@ -65,7 +77,12 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20.19.6
-          cache: 'npm'
+
+      - name: Download node_modules from setup
+        uses: actions/download-artifact@v4
+        with:
+          name: node_modules
+          path: ./node_modules
 
       - name: Build project
         run: npm run build
@@ -82,7 +99,12 @@ jobs:
         uses: actions/setup-node@v3
         with:
           node-version: 20.19.6
-          cache: 'npm'
+
+      - name: Download node_modules from setup
+        uses: actions/download-artifact@v4
+        with:
+          name: node_modules
+          path: ./node_modules
 
       - name: Run tests with coverage
         run: npm run test:cov

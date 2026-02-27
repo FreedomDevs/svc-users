@@ -1,18 +1,32 @@
 services:
   postgres:
-    image: postgres:16
-    container_name: my_postgres
+    image: postgres:18-alpine
+    container_name: svc-users-postgres
 
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: mydb
 
-    ports:
-      - "8002:5432"
+    networks:
+      net:
+        ipv6_address: fd98:2dd6:8f48:1d99:22e6:f8c8::3
 
     volumes:
       - db:/var/lib/postgresql/data
+
+networks:
+  net:
+    enable_ipv6: true
+    enable_ipv4: false
+    driver_opts:
+      com.docker.network.driver.mtu: "65535"
+    ipam:
+      config:
+        - subnet: fd98:2dd6:8f48:1d99:409d:f845::/96
+  host_bridge:
+    external: true
+    name: bridge
 
 volumes:
   db:

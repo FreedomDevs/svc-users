@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
+  InternalServerErrorException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -11,22 +13,57 @@ import { Roles, User } from '@prisma/client';
 import { ApiSuccessResponse } from '@common/types/api-response.type';
 import { UserCodes } from './users.codes';
 import { ok, efail } from '@common/response/response.helper';
+import Redis, { ChainableCommander } from 'ioredis';
 
 @Injectable()
 export class UsersService {
-  private readonly logger = new Logger(UsersService.name);
+  private readonly logger: Logger = new Logger(UsersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject('REDIS_CLIENT') private readonly redis: Redis,
+  ) {}
 
   private async getUserOrThrow(idOrName: string): Promise<User> {
+    const cacheKeyST = 'user';
+    const cacheKey = `${cacheKeyST}:${idOrName}`;
+
+    try {
+      const cached: string | null = await this.redis.get(cacheKey);
+      if (cached) {
+        try {
+          const userData = JSON.parse(cached) as User;
+          if (!userData?.id) throw new Error('Invalid cached user');
+          this.logger.log(`User fetched from cache: ${idOrName}`);
+          return userData;
+        } catch {
+          this.logger.warn(`Corrupted cache for ${cacheKey}, deleting it`);
+          await this.redis.del(cacheKey);
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Redis get failed for key: ${cacheKey}`, err);
+    }
+
+    const isUUID: boolean = /^[0-9a-fA-F-]{36}$/.test(idOrName);
     const user = await this.prisma.user.findFirst({
-      where: { OR: [{ id: idOrName }, { name: idOrName }] },
+      where: isUUID ? { id: idOrName } : { name: idOrName },
     });
 
     if (!user) {
       throw new NotFoundException(
         efail('User not found', UserCodes.USER_NOT_FOUND),
       );
+    }
+
+    const cacheValue: string = JSON.stringify(user);
+    try {
+      const pipeline: ChainableCommander = this.redis.pipeline();
+      pipeline.set(`${cacheKeyST}:${user.id}`, cacheValue, 'EX', 3600);
+      pipeline.set(`${cacheKeyST}:${user.name}`, cacheValue, 'EX', 3600);
+      await pipeline.exec();
+    } catch (err) {
+      this.logger.warn(`Failed to set cache for ${idOrName}`, err);
     }
 
     return user;
@@ -90,13 +127,25 @@ export class UsersService {
     idOrName: string,
     includePassword: boolean,
   ): Promise<ApiSuccessResponse<UserResponse>> {
+    if (!idOrName) {
+      throw new BadRequestException(
+        efail('idOrName must be provided', UserCodes.USER_INVALID_DATA),
+      );
+    }
+
     const user = await this.getUserOrThrow(idOrName);
 
-    return ok(
-      new UserResponse(user, includePassword),
-      'User fetched successfully',
-      UserCodes.USER_FETCHED_OK,
-    );
+    let response: UserResponse;
+    try {
+      response = new UserResponse(user, includePassword);
+    } catch (err) {
+      this.logger.error('Failed to create UserResponse', err);
+      throw new InternalServerErrorException(
+        efail('Failed to create user response', UserCodes.USER_INTERNAL_ERROR),
+      );
+    }
+
+    return ok(response, 'User fetched successfully', UserCodes.USER_FETCHED_OK);
   }
 
   async findAll(
@@ -148,6 +197,19 @@ export class UsersService {
     await this.prisma.user.delete({ where: { id: user.id } });
     this.logger.log(`User deleted: ${user.id} (${user.name})`);
 
+    try {
+      const pipeline = this.redis.pipeline();
+      pipeline.del(`user:${user.id}`);
+      pipeline.del(`user:${user.name}`);
+      await pipeline.exec();
+      this.logger.log(`User cache deleted: ${user.id} (${user.name})`);
+    } catch (err) {
+      this.logger.warn(
+        `Failed to delete cache for user ${user.id} (${user.name})`,
+        err,
+      );
+    }
+
     return ok(null, 'User deleted successfully', UserCodes.USER_DELETED);
   }
 
@@ -185,6 +247,22 @@ export class UsersService {
     });
 
     this.logger.log(`Roles added for user ${user.id}: ${newRoles.join(', ')}`);
+
+    try {
+      const cacheValue = JSON.stringify(updatedUser);
+      const pipeline = this.redis.pipeline();
+      pipeline.set(`user:${user.id}`, cacheValue, 'EX', 3600);
+      pipeline.set(`user:${user.name}`, cacheValue, 'EX', 3600);
+      await pipeline.exec();
+      this.logger.log(
+        `User cache updated: ${updatedUser.id} (${updatedUser.name})`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to update cache for user ${updatedUser.id}`,
+        err,
+      );
+    }
 
     return ok(
       new UserResponse(updatedUser),
@@ -224,6 +302,22 @@ export class UsersService {
     this.logger.log(
       `Roles removed for user ${user.id}: ${rolesToRemove.join(', ')}`,
     );
+
+    try {
+      const cacheValue = JSON.stringify(updatedUser);
+      const pipeline = this.redis.pipeline();
+      pipeline.set(`user:${user.id}`, cacheValue, 'EX', 3600);
+      pipeline.set(`user:${user.name}`, cacheValue, 'EX', 3600);
+      await pipeline.exec();
+      this.logger.log(
+        `User cache updated: ${updatedUser.id} (${updatedUser.name})`,
+      );
+    } catch (err) {
+      this.logger.warn(
+        `Failed to update cache for user ${updatedUser.id}`,
+        err,
+      );
+    }
 
     return ok(
       new UserResponse(updatedUser),

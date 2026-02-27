@@ -1,5 +1,4 @@
 import { Roles, User } from '@prisma/client';
-import { Exclude } from 'class-transformer';
 
 export class UserResponse implements Omit<User, 'password'> {
   id: string;

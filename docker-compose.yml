@@ -10,7 +10,7 @@ services:
 
     networks:
       net:
-        ipv6_address: fd98:2dd6:8f48:1d99:22e6:f8c8::3
+        ipv6_address: fd98:2dd6:8f48:1d99:dc28:e6e1::3
 
     volumes:
       - db:/var/lib/postgresql/data
@@ -21,7 +21,7 @@ services:
     command: redis-server --requirepass ${REDIS_PASSWORD}
     networks:
       net:
-        ipv6_address: fd98:2dd6:8f48:1d99:22e6:f8c8::4
+        ipv6_address: fd98:2dd6:8f48:1d99:dc28:e6e1::4
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -34,7 +34,7 @@ networks:
       com.docker.network.driver.mtu: "65535"
     ipam:
       config:
-        - subnet: fd98:2dd6:8f48:1d99:409d:f845::/96
+        - subnet: fd98:2dd6:8f48:1d99:dc28:e6e1::/96
   host_bridge:
     external: true
     name: bridge

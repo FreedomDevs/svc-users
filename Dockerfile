@@ -4,13 +4,13 @@ FROM node:lts-alpine3.23 AS builder
 WORKDIR /app
 
 # зависимости
-COPY package*.json ./
-RUN npm ci
+RUN --mount=type=bind,source=package.json,target=package.json \
+  --mount=type=bind,source=package-lock.json,target=package-lock.json \
+  npm ci
 
-# исходники
-COPY . .
-
-# билд nest
+COPY src prisma test eslint-config.mjs tsconfig.build.json tsconfig.json \
+  ./
+RUN npx prisma generate
 RUN npm run build
 
 
@@ -21,15 +21,10 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
-# только package*.json для prod-зависимостей
-COPY package*.json ./
-RUN npm ci --omit=dev
+RUN --mount=type=bind,source=package.json,target=package.json \
+  --mount=type=bind,source=package-lock.json,target=package-lock.json \
+  RUN npm ci --omit=dev
 
-# копируем результат сборки
 COPY --from=builder /app/dist ./dist
-
-# если есть prisma / assets / migrations — копируй явно
-# COPY --from=builder /app/prisma ./prisma
-
 CMD ["node", "dist/main.js"]
 

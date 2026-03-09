@@ -1,6 +1,5 @@
 import {
   BadRequestException,
-  Inject,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -13,38 +12,14 @@ import { Roles, User } from '@prisma/client';
 import { ApiSuccessResponse } from '@common/types/api-response.type';
 import { UserCodes } from './users.codes';
 import { ok, efail } from '@common/response/response.helper';
-import Redis, { ChainableCommander } from 'ioredis';
 
 @Injectable()
 export class UsersService {
   private readonly logger: Logger = new Logger(UsersService.name);
 
-  constructor(
-    private readonly prisma: PrismaService,
-    @Inject('REDIS_CLIENT') private readonly redis: Redis,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   private async getUserOrThrow(idOrName: string): Promise<User> {
-    const cacheKeyST = 'user';
-    const cacheKey = `${cacheKeyST}:${idOrName}`;
-
-    try {
-      const cached: string | null = await this.redis.get(cacheKey);
-      if (cached) {
-        try {
-          const userData = JSON.parse(cached) as User;
-          if (!userData?.id) throw new Error('Invalid cached user');
-          this.logger.log(`User fetched from cache: ${idOrName}`);
-          return userData;
-        } catch {
-          this.logger.warn(`Corrupted cache for ${cacheKey}, deleting it`);
-          await this.redis.del(cacheKey);
-        }
-      }
-    } catch (err) {
-      this.logger.warn(`Redis get failed for key: ${cacheKey}`, err);
-    }
-
     const isUUID: boolean = /^[0-9a-fA-F-]{36}$/.test(idOrName);
     const user = await this.prisma.user.findFirst({
       where: isUUID ? { id: idOrName } : { name: idOrName },
@@ -54,16 +29,6 @@ export class UsersService {
       throw new NotFoundException(
         efail('User not found', UserCodes.USER_NOT_FOUND),
       );
-    }
-
-    const cacheValue: string = JSON.stringify(user);
-    try {
-      const pipeline: ChainableCommander = this.redis.pipeline();
-      pipeline.set(`${cacheKeyST}:${user.id}`, cacheValue, 'EX', 3600);
-      pipeline.set(`${cacheKeyST}:${user.name}`, cacheValue, 'EX', 3600);
-      await pipeline.exec();
-    } catch (err) {
-      this.logger.warn(`Failed to set cache for ${idOrName}`, err);
     }
 
     return user;
@@ -197,19 +162,6 @@ export class UsersService {
     await this.prisma.user.delete({ where: { id: user.id } });
     this.logger.log(`User deleted: ${user.id} (${user.name})`);
 
-    try {
-      const pipeline = this.redis.pipeline();
-      pipeline.del(`user:${user.id}`);
-      pipeline.del(`user:${user.name}`);
-      await pipeline.exec();
-      this.logger.log(`User cache deleted: ${user.id} (${user.name})`);
-    } catch (err) {
-      this.logger.warn(
-        `Failed to delete cache for user ${user.id} (${user.name})`,
-        err,
-      );
-    }
-
     return ok(null, 'User deleted successfully', UserCodes.USER_DELETED);
   }
 
@@ -247,22 +199,6 @@ export class UsersService {
     });
 
     this.logger.log(`Roles added for user ${user.id}: ${newRoles.join(', ')}`);
-
-    try {
-      const cacheValue = JSON.stringify(updatedUser);
-      const pipeline = this.redis.pipeline();
-      pipeline.set(`user:${user.id}`, cacheValue, 'EX', 3600);
-      pipeline.set(`user:${user.name}`, cacheValue, 'EX', 3600);
-      await pipeline.exec();
-      this.logger.log(
-        `User cache updated: ${updatedUser.id} (${updatedUser.name})`,
-      );
-    } catch (err) {
-      this.logger.warn(
-        `Failed to update cache for user ${updatedUser.id}`,
-        err,
-      );
-    }
 
     return ok(
       new UserResponse(updatedUser),
@@ -302,22 +238,6 @@ export class UsersService {
     this.logger.log(
       `Roles removed for user ${user.id}: ${rolesToRemove.join(', ')}`,
     );
-
-    try {
-      const cacheValue = JSON.stringify(updatedUser);
-      const pipeline = this.redis.pipeline();
-      pipeline.set(`user:${user.id}`, cacheValue, 'EX', 3600);
-      pipeline.set(`user:${user.name}`, cacheValue, 'EX', 3600);
-      await pipeline.exec();
-      this.logger.log(
-        `User cache updated: ${updatedUser.id} (${updatedUser.name})`,
-      );
-    } catch (err) {
-      this.logger.warn(
-        `Failed to update cache for user ${updatedUser.id}`,
-        err,
-      );
-    }
 
     return ok(
       new UserResponse(updatedUser),

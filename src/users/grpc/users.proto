@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package users;
+
+service UsersService {
+  rpc CreateUser(CreateUserRequest) returns (UserResponseMessage);
+  rpc GetUser(GetUserRequest) returns (UserResponseMessage);
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse);
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse);
+  rpc AddRoles(AddRolesRequest) returns (UserResponseMessage);
+  rpc RemoveRoles(RemoveRolesRequest) returns (UserResponseMessage);
+  rpc HasRoles(HasRolesRequest) returns (HasRolesResponse);
+}
+
+message CreateUserRequest {
+  string name = 1;
+  string password = 2;
+}
+
+message GetUserRequest {
+  string idOrName = 1;
+  bool includePassword = 2;
+}
+
+message ListUsersRequest {
+  string search = 1;
+  int32 page = 2;
+  int32 pageSize = 3;
+}
+
+message DeleteUserRequest {
+  string idOrName = 1;
+}
+
+message AddRolesRequest {
+  string idOrName = 1;
+  repeated string roles = 2;
+}
+
+message RemoveRolesRequest {
+  string idOrName = 1;
+  repeated string roles = 2;
+}
+
+message HasRolesRequest {
+  string idOrName = 1;
+  repeated string roles = 2;
+}
+
+message UserResponseMessage {
+  string id = 1;
+  string name = 2;
+  repeated string roles = 3;
+}
+
+message ListUsersResponse {
+  repeated UserResponseMessage users = 1;
+  int32 page = 2;
+  int32 pageSize = 3;
+  int32 total = 4;
+  int32 totalPages = 5;
+}
+
+message DeleteUserResponse {
+  string message = 1;
+}
+
+message HasRolesResponse {
+  map<string, bool> result = 1;
+}

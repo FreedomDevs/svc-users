@@ -49,7 +49,7 @@ async function bootstrap() {
     options: {
       package: 'users',
       protoPath: protoFile,
-      url: '0.0.0.0:50051',
+      url: '[::]:50051',
     },
   });
 

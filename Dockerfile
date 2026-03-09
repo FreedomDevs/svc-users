@@ -1,5 +1,6 @@
 # ---------- stage 1: build ----------
-FROM node:lts-alpine3.23 AS builder
+FROM node:18-alpine AS builder
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
@@ -16,6 +17,7 @@ RUN npm run build
 
 # ---------- stage 2: production ----------
 FROM node:lts-alpine3.23
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 

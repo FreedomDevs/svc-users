@@ -39,7 +39,7 @@ services:
         ipv6_address: fd98:2dd6:8f48:1d99:dc28:e6e1::3
 
     volumes:
-      - db:/var/lib/postgresql/data
+      - db:/var/lib/postgresql
 
 networks:
   net:
@@ -50,9 +50,6 @@ networks:
     ipam:
       config:
         - subnet: fd98:2dd6:8f48:1d99:dc28:e6e1::/96
-  host_bridge:
-    external: true
-    name: bridge
 
 volumes:
   db:

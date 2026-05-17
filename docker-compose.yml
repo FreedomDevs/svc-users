@@ -22,7 +22,7 @@ services:
       PORT: 80
 
     networks:
-      net:
+      shared-net:
         ipv6_address: fd98:2dd6:8f48:1d99:dc28:e6e1::2
 
   postgres:
@@ -35,21 +35,16 @@ services:
       POSTGRES_DB: mydb
 
     networks:
-      net:
+      shared-net:
         ipv6_address: fd98:2dd6:8f48:1d99:dc28:e6e1::3
 
     volumes:
       - db:/var/lib/postgresql
 
 networks:
-  net:
-    enable_ipv6: true
-    enable_ipv4: false
-    driver_opts:
-      com.docker.network.driver.mtu: "65535"
-    ipam:
-      config:
-        - subnet: fd98:2dd6:8f48:1d99:dc28:e6e1::/96
+  shared-net:
+    external: true
+    name: svc-net
 
 volumes:
   db:

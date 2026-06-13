@@ -9,8 +9,7 @@ RUN --mount=type=bind,source=package.json,target=package.json \
   --mount=type=bind,source=package-lock.json,target=package-lock.json \
   npm ci
 
-COPY src prisma test eslint-config.mjs tsconfig.build.json tsconfig.json \
-  ./
+COPY src prisma test eslint.config.mjs tsconfig.build.json tsconfig.json ./
 RUN npx prisma generate
 RUN npm run build
 

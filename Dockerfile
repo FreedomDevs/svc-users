@@ -4,12 +4,16 @@ RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
+COPY package.json ./
+
 # зависимости
-RUN --mount=type=bind,source=package.json,target=package.json \
-  --mount=type=bind,source=package-lock.json,target=package-lock.json \
+RUN --mount=type=bind,source=package-lock.json,target=package-lock.json \
   npm ci
 
-COPY src prisma test eslint.config.mjs tsconfig.build.json tsconfig.json ./
+COPY src ./src
+COPY prisma ./prisma
+COPY test ./test
+COPY eslint.config.mjs tsconfig.build.json tsconfig.json ./
 RUN npx prisma generate
 RUN npm run build
 
@@ -24,7 +28,7 @@ ENV NODE_ENV=production
 
 RUN --mount=type=bind,source=package.json,target=package.json \
   --mount=type=bind,source=package-lock.json,target=package-lock.json \
-  RUN npm ci --omit=dev
+  npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 CMD ["node", "dist/main.js"]

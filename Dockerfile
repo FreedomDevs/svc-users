@@ -20,7 +20,6 @@ RUN npm run build
 
 # ---------- stage 2: production ----------
 FROM node:lts-alpine3.23
-RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
@@ -30,9 +29,7 @@ RUN --mount=type=bind,source=package.json,target=package.json \
   --mount=type=bind,source=package-lock.json,target=package-lock.json \
   npm ci --omit=dev
 
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma/client ./node_modules/@prisma/client
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/dist ./dist
-CMD ["node", "dist/main.js"]
-
+COPY --from=builder /app/node_modules/.prisma/client ./node_modules/.prisma/client
+COPY --from=builder /app/prisma/ ./prisma/
+COPY --from=builder /app/dist/ ./dist/
+CMD npx prisma db push && exec node dist/main.js

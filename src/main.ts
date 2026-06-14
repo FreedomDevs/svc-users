@@ -35,11 +35,8 @@ async function bootstrap() {
     new TraceInterceptor(),
     new ClassSerializerInterceptor(app.get(Reflector)),
   );
-  // const protoFile = existsSync(join(__dirname, './users/grpc/users.proto'))
-  //   ? join(__dirname, './users/grpc/users.proto')
-  //   : join(__dirname, '../users/grpc/users.proto');
 
-  const protoFile = join(__dirname, '../src/users/grpc/users.proto');
+  const protoFile = process.env.NODE_ENV == "production" ? "dist/grpc/users.proto" : join(__dirname, '../src/users/grpc/users.proto');
 
   console.log(protoFile);
 

@@ -10,7 +10,6 @@ import {
 import { UserCodes } from './users/users.codes';
 import { efail } from '@common/response/response.helper';
 import { TraceInterceptor } from '@common/interceptors/trace.interceptor';
-import { existsSync } from 'node:fs';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

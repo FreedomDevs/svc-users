@@ -56,4 +56,7 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 9002);
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('Критическая ошибка приложения:', err);
+  process.exit(1);
+});;

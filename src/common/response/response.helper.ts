@@ -2,7 +2,7 @@ import {
   ApiErrorResponse,
   ApiSuccessResponse,
 } from '@common/types/api-response.type';
-import { UserCodes } from '../../users/users.codes';
+import { UserCodes } from '@/api/users/users.codes';
 
 export function ok<T>(
   data: T,

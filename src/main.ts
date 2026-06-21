@@ -1,13 +1,11 @@
 import { NestFactory, Reflector } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { Transport, MicroserviceOptions } from '@nestjs/microservices';
-import { join } from 'path';
 import {
   BadRequestException,
   ClassSerializerInterceptor,
   ValidationPipe,
 } from '@nestjs/common';
-import { UserCodes } from './users/users.codes';
+import { UserCodes } from '@/api/users/users.codes';
 import { efail } from '@common/response/response.helper';
 import { TraceInterceptor } from '@common/interceptors/trace.interceptor';
 
@@ -24,6 +22,7 @@ async function bootstrap() {
           field: e.property,
           messages: Object.values(e.constraints ?? {}),
         }));
+
         return new BadRequestException(
           efail('Validation failed', UserCodes.USER_INVALID_DATA, details),
         );
@@ -36,24 +35,10 @@ async function bootstrap() {
     new ClassSerializerInterceptor(app.get(Reflector)),
   );
 
-  const protoFile = process.env.NODE_ENV == "production" ? "dist/grpc/users.proto" : join(__dirname, '../src/users/grpc/users.proto');
-
-  console.log(protoFile);
-
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.GRPC,
-    options: {
-      package: 'users',
-      protoPath: protoFile,
-      url: '[::]:50051',
-    },
-  });
-
-  await app.startAllMicroservices();
   await app.listen(process.env.PORT ?? 9002);
 }
 
 bootstrap().catch((err) => {
   console.error('Критическая ошибка приложения:', err);
   process.exit(1);
-});;
+});

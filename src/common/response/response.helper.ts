@@ -2,12 +2,12 @@ import {
   ApiErrorResponse,
   ApiSuccessResponse,
 } from '@common/types/api-response.type';
-import { UserCodes } from '@/api/users/users.codes';
+import { ApiCode } from '@common/types/apiCode.type';
 
 export function ok<T>(
   data: T,
   message: string,
-  code: string,
+  code: ApiCode,
 ): ApiSuccessResponse<T> {
   return {
     data,
@@ -22,7 +22,7 @@ export function ok<T>(
 
 export function efail(
   message: string,
-  code: UserCodes,
+  code: ApiCode,
   details?: unknown[],
 ): ApiErrorResponse {
   return {

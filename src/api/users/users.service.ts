@@ -11,18 +11,68 @@ import { ApiSuccessResponse } from '@common/types/api-response.type';
 import { UserCodes } from './users.codes';
 import { ok, efail } from '@common/response/response.helper';
 import { PrismaService } from '@prisma/prisma.service';
-import { User } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+
+type UserWithGroups = Prisma.UserGetPayload<{
+  include: {
+    groups: true;
+  };
+}>;
+
+type UsersListResponse = {
+  users: UserResponse[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+};
 
 @Injectable()
 export class UsersService {
-  private readonly logger: Logger = new Logger(UsersService.name);
+  private readonly logger = new Logger(UsersService.name);
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private async getUserOrThrow(idOrName: string): Promise<User> {
-    const isUUID: boolean = /^[0-9a-fA-F-]{36}$/.test(idOrName);
+  private isUUID(value: string): boolean {
+    return /^[0-9a-fA-F-]{36}$/.test(value);
+  }
+
+  private validateArray(values: readonly unknown[], field: string): void {
+    if (!Array.isArray(values) || values.length === 0) {
+      throw new BadRequestException(
+        efail(
+          `${field} must be a non-empty array`,
+          UserCodes.USER_INVALID_DATA,
+        ),
+      );
+    }
+  }
+
+  private validatePagination(page: number, pageSize: number): void {
+    if (page < 1 || pageSize < 1) {
+      throw new BadRequestException(
+        efail(
+          'Page and pageSize must be greater than 0',
+          UserCodes.USER_INVALID_PAGINATION,
+        ),
+      );
+    }
+  }
+
+  private async getUserOrThrow(idOrName: string): Promise<UserWithGroups> {
+    if (!idOrName.trim()) {
+      throw new BadRequestException(
+        efail('User identifier is required', UserCodes.USER_INVALID_DATA),
+      );
+    }
+
     const user = await this.prisma.user.findFirst({
-      where: isUUID ? { id: idOrName } : { name: idOrName },
+      where: this.isUUID(idOrName) ? { id: idOrName } : { name: idOrName },
+      include: {
+        groups: true,
+      },
     });
 
     if (!user) {
@@ -34,35 +84,21 @@ export class UsersService {
     return user;
   }
 
-  private validatePagination(page: number, pageSize: number) {
-    if (page < 1 || pageSize < 1) {
-      throw new BadRequestException(
-        efail(
-          'Page and pageSize must be greater than 0',
-          UserCodes.USER_INVALID_PAGINATION,
-        ),
-      );
-    }
-  }
-
-  // private filterValidNewRoles(userRoles: Roles[], roles: Roles[]): Roles[] {
-  //   const validRoles = Object.values(Roles);
-  //   return roles.filter(
-  //     (r) => validRoles.includes(r) && !userRoles.includes(r),
-  //   );
-  // }
-
   async create(
     createUserDto: CreateUserDto,
   ): Promise<ApiSuccessResponse<UserResponse>> {
-    if (!createUserDto.name || !createUserDto.password) {
+    const { name, password } = createUserDto;
+
+    if (!name.trim() || !password.trim()) {
       throw new BadRequestException(
         efail('Name and password are required', UserCodes.USER_INVALID_DATA),
       );
     }
 
     const existingUser = await this.prisma.user.findUnique({
-      where: { name: createUserDto.name },
+      where: {
+        name: name.trim(),
+      },
     });
 
     if (existingUser) {
@@ -73,11 +109,10 @@ export class UsersService {
 
     const user = await this.prisma.user.create({
       data: {
-        name: createUserDto.name,
-        password: createUserDto.password,
-        // roles: ['USER'],
+        name: name.trim(),
+        password,
       },
-    }); // roles: ['USER'],
+    });
 
     this.logger.log(`User created: ${user.id} (${user.name})`);
 
@@ -90,54 +125,58 @@ export class UsersService {
 
   async findOne(
     idOrName: string,
-    includePassword: boolean,
+    includePassword = false,
   ): Promise<ApiSuccessResponse<UserResponse>> {
-    if (!idOrName) {
-      throw new BadRequestException(
-        efail('idOrName must be provided', UserCodes.USER_INVALID_DATA),
-      );
-    }
-
     const user = await this.getUserOrThrow(idOrName);
 
-    let response: UserResponse;
     try {
-      response = new UserResponse(user, includePassword);
-    } catch (err) {
-      this.logger.error('Failed to create UserResponse', err);
+      const response = new UserResponse(user, includePassword);
+
+      return ok(
+        response,
+        'User fetched successfully',
+        UserCodes.USER_FETCHED_OK,
+      );
+    } catch (error: unknown) {
+      this.logger.error('Failed to create UserResponse', error);
+
       throw new InternalServerErrorException(
         efail('Failed to create user response', UserCodes.USER_INTERNAL_ERROR),
       );
     }
-
-    return ok(response, 'User fetched successfully', UserCodes.USER_FETCHED_OK);
   }
 
   async findAll(
     search?: string,
     page = 1,
     pageSize = 10,
-  ): Promise<ApiSuccessResponse<{ users: UserResponse[]; pagination: any }>> {
+  ): Promise<ApiSuccessResponse<UsersListResponse>> {
     this.validatePagination(page, pageSize);
+
+    const where: Prisma.UserWhereInput = search?.trim()
+      ? {
+          name: {
+            contains: search.trim(),
+            mode: 'insensitive',
+          },
+        }
+      : {};
 
     const [users, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
-        where: search
-          ? { name: { contains: search, mode: 'insensitive' } }
-          : {},
+        where,
+        include: {
+          groups: true,
+        },
         skip: (page - 1) * pageSize,
         take: pageSize,
       }),
-      this.prisma.user.count({
-        where: search
-          ? { name: { contains: search, mode: 'insensitive' } }
-          : {},
-      }),
+      this.prisma.user.count({ where }),
     ]);
 
     return ok(
       {
-        users: users.map((u) => new UserResponse(u)),
+        users: users.map((user) => new UserResponse(user)),
         pagination: {
           page,
           pageSize,
@@ -151,98 +190,190 @@ export class UsersService {
   }
 
   async delete(idOrName: string): Promise<ApiSuccessResponse<null>> {
-    if (!idOrName) {
-      throw new BadRequestException(
-        efail('ID is required', UserCodes.USER_INVALID_DATA),
-      );
-    }
-
     const user = await this.getUserOrThrow(idOrName);
 
-    await this.prisma.user.delete({ where: { id: user.id } });
+    await this.prisma.user.delete({
+      where: {
+        id: user.id,
+      },
+    });
+
     this.logger.log(`User deleted: ${user.id} (${user.name})`);
 
     return ok(null, 'User deleted successfully', UserCodes.USER_DELETED);
   }
 
-  // async hasRole(
-  //   idOrName: string,
-  //   rolesToCheck: Roles[],
-  // ): Promise<ApiSuccessResponse<Record<string, boolean>>> {
-  //   const user = await this.getUserOrThrow(idOrName);
-  //
-  //   const result: Record<string, boolean> = {};
-  //   rolesToCheck.forEach((role) => (result[role] = user.roles.includes(role)));
-  //
-  //   return ok(result, 'Roles checked successfully', UserCodes.ROLES_UPDATED);
-  // }
-  //
-  // async addRoles(
-  //   idOrName: string,
-  //   rolesToAdd: Roles[],
-  // ): Promise<ApiSuccessResponse<UserResponse>> {
-  //   const user = await this.getUserOrThrow(idOrName);
-  //
-  //   const newRoles = this.filterValidNewRoles(user.roles, rolesToAdd);
-  //   if (!newRoles.length) {
-  //     throw new BadRequestException(
-  //       efail(
-  //         'User already has all these roles or invalid roles provided',
-  //         UserCodes.USER_INVALID_DATA,
-  //       ),
-  //     );
-  //   }
-  //
-  //   const updatedUser = await this.prisma.user.update({
-  //     where: { id: user.id },
-  //     data: { roles: [...user.roles, ...newRoles] },
-  //   });
-  //
-  //   this.logger.log(`Roles added for user ${user.id}: ${newRoles.join(', ')}`);
-  //
-  //   return ok(
-  //     new UserResponse(updatedUser),
-  //     'Roles updated successfully',
-  //     UserCodes.ROLES_UPDATED,
-  //   );
-  // }
-  //
-  // async removeRoles(
-  //   idOrName: string,
-  //   rolesToRemove: Roles[],
-  // ): Promise<ApiSuccessResponse<UserResponse>> {
-  //   const user = await this.getUserOrThrow(idOrName);
-  //
-  //   const remainingRoles = user.roles.filter((r) => !rolesToRemove.includes(r));
-  //
-  //   if (remainingRoles.length === user.roles.length) {
-  //     throw new BadRequestException(
-  //       efail(
-  //         'User does not have any of these roles',
-  //         UserCodes.USER_INVALID_DATA,
-  //       ),
-  //     );
-  //   }
-  //
-  //   if (!remainingRoles.length) {
-  //     throw new BadRequestException(
-  //       efail('User must have at least one role', UserCodes.USER_INVALID_DATA),
-  //     );
-  //   }
-  //
-  //   const updatedUser = await this.prisma.user.update({
-  //     where: { id: user.id },
-  //     data: { roles: remainingRoles },
-  //   });
-  //
-  //   this.logger.log(
-  //     `Roles removed for user ${user.id}: ${rolesToRemove.join(', ')}`,
-  //   );
-  //
-  //   return ok(
-  //     new UserResponse(updatedUser),
-  //     'Roles updated successfully',
-  //     UserCodes.ROLES_UPDATED,
-  //   );
-  // }
+  async addPermissions(
+    idOrName: string,
+    permissions: string[],
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    this.validateArray(permissions, 'permissions');
+
+    const user = await this.getUserOrThrow(idOrName);
+
+    const uniquePermissions = [...new Set(permissions)];
+
+    const newPermissions = uniquePermissions.filter(
+      (permission) => !user.permissions.includes(permission),
+    );
+
+    if (!newPermissions.length) {
+      throw new BadRequestException(
+        efail('Permissions already assigned', UserCodes.PERMISSIONS_UPDATED),
+      );
+    }
+
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        permissions: [...user.permissions, ...newPermissions],
+      },
+      include: {
+        groups: true,
+      },
+    });
+
+    return ok(
+      new UserResponse(updated),
+      'Permissions added',
+      UserCodes.PERMISSIONS_UPDATED,
+    );
+  }
+
+  async removePermissions(
+    idOrName: string,
+    permissions: string[],
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    this.validateArray(permissions, 'permissions');
+
+    const user = await this.getUserOrThrow(idOrName);
+
+    const removablePermissions = permissions.filter((permission) =>
+      user.permissions.includes(permission),
+    );
+
+    if (!removablePermissions.length) {
+      throw new BadRequestException(
+        efail('Permissions not found', UserCodes.PERMISSIONS_UPDATED),
+      );
+    }
+
+    const updated = await this.prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        permissions: user.permissions.filter(
+          (permission) => !removablePermissions.includes(permission),
+        ),
+      },
+      include: {
+        groups: true,
+      },
+    });
+
+    return ok(
+      new UserResponse(updated),
+      'Permissions removed',
+      UserCodes.PERMISSIONS_UPDATED,
+    );
+  }
+
+  async assignGroups(
+    idOrName: string,
+    groupIds: string[],
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    this.validateArray(groupIds, 'groupIds');
+
+    const user = await this.getUserOrThrow(idOrName);
+
+    const uniqueGroupIds = [...new Set(groupIds)];
+
+    const existingGroups = await this.prisma.group.findMany({
+      where: {
+        id: {
+          in: uniqueGroupIds,
+        },
+      },
+    });
+
+    if (existingGroups.length !== uniqueGroupIds.length) {
+      throw new NotFoundException(
+        efail('One or more groups not found', UserCodes.USER_INVALID_DATA),
+      );
+    }
+
+    const assignedGroupIds = user.groups.map((group) => group.id);
+
+    const groupsToAssign = uniqueGroupIds.filter(
+      (groupId) => !assignedGroupIds.includes(groupId),
+    );
+
+    if (!groupsToAssign.length) {
+      throw new BadRequestException(
+        efail('Groups already assigned', UserCodes.GROUPS_UPDATED),
+      );
+    }
+
+    const updated = await this.prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        groups: {
+          connect: groupsToAssign.map((id) => ({ id })),
+        },
+      },
+      include: {
+        groups: true,
+      },
+    });
+
+    return ok(
+      new UserResponse(updated),
+      'Groups assigned',
+      UserCodes.GROUPS_UPDATED,
+    );
+  }
+
+  async removeGroups(
+    idOrName: string,
+    groupIds: string[],
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    this.validateArray(groupIds, 'groupIds');
+
+    const user = await this.getUserOrThrow(idOrName);
+
+    const assignedGroupIds = user.groups.map((group) => group.id);
+
+    const groupsToRemove = groupIds.filter((groupId) =>
+      assignedGroupIds.includes(groupId),
+    );
+
+    if (!groupsToRemove.length) {
+      throw new BadRequestException(
+        efail('Groups are not assigned to this user', UserCodes.GROUPS_UPDATED),
+      );
+    }
+
+    const updated = await this.prisma.user.update({
+      where: {
+        id: user.id,
+      },
+      data: {
+        groups: {
+          disconnect: groupsToRemove.map((id) => ({ id })),
+        },
+      },
+      include: {
+        groups: true,
+      },
+    });
+
+    return ok(
+      new UserResponse(updated),
+      'Groups removed',
+      UserCodes.GROUPS_UPDATED,
+    );
+  }
 }

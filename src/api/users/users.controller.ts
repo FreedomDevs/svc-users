@@ -5,16 +5,34 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
   Param,
   Post,
-  Logger,
+  Put,
   Query,
 } from '@nestjs/common';
+
 import { UsersService } from './users.service';
+
 import { CreateUserDto } from './dto';
-import { ApiSuccessResponse } from '@common/types/api-response.type';
 import { UserResponse } from './response';
-// import { Roles } from '@prisma/generated';
+
+import { ApiSuccessResponse } from '@common/types/api-response.type';
+
+import { UpdatePermissionsDto } from './dto';
+import { AssignGroupsDto } from '@/api/groups/dto';
+
+type PaginationResponse = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+
+type UsersListResponse = {
+  users: UserResponse[];
+  pagination: PaginationResponse;
+};
 
 @Controller('users')
 export class UsersController {
@@ -29,11 +47,16 @@ export class UsersController {
   async create(
     @Body() createUserDto: CreateUserDto,
   ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.logger.log(`POST /users - body: ${JSON.stringify(createUserDto)}`);
+    this.logger.log(
+      `POST /users -> ${JSON.stringify({
+        name: createUserDto.name,
+      })}`,
+    );
+
     return this.usersService.create(createUserDto);
   }
 
-  /* Для поиска/получения */
+  /* Получение одного пользователя */
 
   @Get(':idOrName')
   @HttpCode(HttpStatus.OK)
@@ -41,13 +64,16 @@ export class UsersController {
     @Param('idOrName') idOrName: string,
     @Query('psw') psw?: string,
   ): Promise<ApiSuccessResponse<UserResponse>> {
-    const includePassword: boolean = psw === 'true';
+    const includePassword = psw === 'true';
+
     this.logger.log(
-      `GET /users/${idOrName} - includePassword: ${includePassword}`,
+      `GET /users/${idOrName} -> includePassword=${includePassword}`,
     );
 
     return this.usersService.findOne(idOrName, includePassword);
   }
+
+  /* Получение списка пользователей */
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -55,13 +81,15 @@ export class UsersController {
     @Query('search') search?: string,
     @Query('page') page = '1',
     @Query('limit') limit = '10',
-  ): Promise<ApiSuccessResponse<{ users: UserResponse[]; pagination: any }>> {
-    const pageNum: number = parseInt(page, 10);
-    const limitNum: number = parseInt(limit, 10);
+  ): Promise<ApiSuccessResponse<UsersListResponse>> {
+    const pageNumber = Number(page);
+    const limitNumber = Number(limit);
+
     this.logger.log(
-      `GET /users - search: ${search}, page: ${pageNum}, limit: ${limitNum}`,
+      `GET /users -> search=${search ?? '-'} page=${pageNumber} limit=${limitNumber}`,
     );
-    return this.usersService.findAll(search, pageNum, limitNum);
+
+    return this.usersService.findAll(search, pageNumber, limitNumber);
   }
 
   /* Удаление пользователя */
@@ -72,45 +100,59 @@ export class UsersController {
     @Param('idOrName') idOrName: string,
   ): Promise<ApiSuccessResponse<null>> {
     this.logger.log(`DELETE /users/${idOrName}`);
+
     return this.usersService.delete(idOrName);
   }
 
-  /* Для ролей */
+  /* Добавить permissions */
 
-  // @Get(':idOrName/roles')
-  // @HttpCode(HttpStatus.OK)
-  // async hasRoles(
-  //   @Param('idOrName') idOrName: string,
-  //   @Query('roles') roles: string,
-  // ): Promise<ApiSuccessResponse<Record<string, boolean>>> {
-  //   const rolesArray: Roles[] = roles?.split(',') as Roles[];
-  //   this.logger.log(
-  //     `GET /users/${idOrName}/roles - roles: ${JSON.stringify(rolesArray)}`,
-  //   );
-  //   return this.usersService.hasRole(idOrName, rolesArray);
-  // }
-  //
-  // @Put(':idOrName/roles/add')
-  // @HttpCode(HttpStatus.OK)
-  // async addRoles(
-  //   @Param('idOrName') idOrName: string,
-  //   @Body('roles') roles: Roles[],
-  // ): Promise<ApiSuccessResponse<UserResponse>> {
-  //   this.logger.log(
-  //     `PUT /users/${idOrName}/roles/add - roles: ${JSON.stringify(roles)}`,
-  //   );
-  //   return this.usersService.addRoles(idOrName, roles);
-  // }
-  //
-  // @Put(':idOrName/roles/remove')
-  // @HttpCode(HttpStatus.OK)
-  // async removeRoles(
-  //   @Param('idOrName') idOrName: string,
-  //   @Body('roles') roles: Roles[],
-  // ): Promise<ApiSuccessResponse<UserResponse>> {
-  //   this.logger.log(
-  //     `PUT /users/${idOrName}/roles/remove - roles: ${JSON.stringify(roles)}`,
-  //   );
-  //   return this.usersService.removeRoles(idOrName, roles);
-  // }
+  @Put(':idOrName/permissions/add')
+  @HttpCode(HttpStatus.OK)
+  async addPermissions(
+    @Param('idOrName') idOrName: string,
+    @Body() dto: UpdatePermissionsDto,
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    this.logger.log(`PUT /users/${idOrName}/permissions/add`);
+
+    return this.usersService.addPermissions(idOrName, dto.permissions);
+  }
+
+  /* Удалить permissions */
+
+  @Put(':idOrName/permissions/remove')
+  @HttpCode(HttpStatus.OK)
+  async removePermissions(
+    @Param('idOrName') idOrName: string,
+    @Body() dto: UpdatePermissionsDto,
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    this.logger.log(`PUT /users/${idOrName}/permissions/remove`);
+
+    return this.usersService.removePermissions(idOrName, dto.permissions);
+  }
+
+  /* Назначить группы */
+
+  @Put(':idOrName/groups/assign')
+  @HttpCode(HttpStatus.OK)
+  async assignGroups(
+    @Param('idOrName') idOrName: string,
+    @Body() dto: AssignGroupsDto,
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    this.logger.log(`PUT /users/${idOrName}/groups/assign`);
+
+    return this.usersService.assignGroups(idOrName, dto.groupIds);
+  }
+
+  /* Удалить группы */
+
+  @Put(':idOrName/groups/remove')
+  @HttpCode(HttpStatus.OK)
+  async removeGroups(
+    @Param('idOrName') idOrName: string,
+    @Body() dto: AssignGroupsDto,
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    this.logger.log(`PUT /users/${idOrName}/groups/remove`);
+
+    return this.usersService.removeGroups(idOrName, dto.groupIds);
+  }
 }

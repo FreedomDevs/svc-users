@@ -1,5 +1,7 @@
+import { ApiCode } from '@common/types/apiCode.type';
+
 export type ApiMeta = {
-  code: string;
+  code: ApiCode;
   traceId: string;
   timestamp: string;
 };
@@ -12,7 +14,7 @@ export type ApiSuccessResponse<T> = {
 
 export type ApiErrorResponse = {
   error: {
-    code: string;
+    code: ApiCode;
     message: string;
     details?: unknown[];
   };

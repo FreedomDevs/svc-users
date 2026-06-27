@@ -1,5 +1,5 @@
 # ---------- stage 1: build ----------
-FROM node:18-alpine AS builder
+FROM node:22-alpine3.24 AS builder
 RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
@@ -19,17 +19,19 @@ RUN npm run build
 
 
 # ---------- stage 2: production ----------
-FROM node:lts-alpine3.23
-
-WORKDIR /app
-
-ENV NODE_ENV=production
+FROM node:22-alpine3.24
 
 RUN --mount=type=bind,source=package.json,target=package.json \
   --mount=type=bind,source=package-lock.json,target=package-lock.json \
-  npm ci --omit=dev
+  --mount=type=bind,from=builder,source=/app,target=/builder \
+  --mount=type=bind,source=prisma.config.ts,target=/tmp-prisma.config.ts \
+  cp -r /builder/prisma ./ && \
+  cp -r /builder/dist ./ && \
+  cp -r /tmp-prisma.config.ts ./prisma.config.ts && \
+  npm ci --omit=dev && \
+  find node_modules -type f \( -name "*.d.js" -o -name "*.d.cjs" -o -name "*.map" \) -delete && \
+  mkdir -p ./node_modules/.prisma && \
+  cp -r /builder/node_modules/.prisma/client ./node_modules/.prisma/ && \
+  rm -rf /root/.npm/
 
-COPY --from=builder /app/node_modules/.prisma/client ./node_modules/.prisma/client
-COPY --from=builder /app/prisma/ ./prisma/
-COPY --from=builder /app/dist/ ./dist/
-CMD npx prisma db push && exec node dist/main.js
+CMD ["sh", "-c", "export NODE_ENV=production && ./node_modules/.bin/prisma db push && exec node dist/main.js"]

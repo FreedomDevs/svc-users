@@ -84,7 +84,7 @@ export class UsersController {
   ): Promise<ApiSuccessResponse<UserResponse>> {
     if (eauth_type != EAuthType.user) {
       throw new BadRequestException(
-        efail('Only user', UserCodes.USER_DUPLICATE),
+        efail('Only user', UserCodes.USER_INVALID_DATA),
       );
     }
 

@@ -10,6 +10,8 @@ import {
   Post,
   Put,
   Query,
+  Headers,
+  BadRequestException,
 } from '@nestjs/common';
 
 import { UsersService } from './users.service';
@@ -17,10 +19,11 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto';
 import { UserResponse } from './response';
 
-import { ApiSuccessResponse } from '@common/types/api-response.type';
-
 import { UpdatePermissionsDto } from './dto';
 import { AssignGroupsDto } from '@/api/groups/dto';
+import { efail } from '@common/response/response.helper';
+import { UserCodes } from '@/api/users/users.codes';
+import { ApiSuccessResponse, EAuthType } from '@common/types';
 
 type PaginationResponse = {
   page: number;
@@ -71,6 +74,22 @@ export class UsersController {
     );
 
     return this.usersService.findOne(idOrName, includePassword);
+  }
+
+  @Get('/me')
+  @HttpCode(HttpStatus.OK)
+  async me(
+    @Headers('eauth-type') eauth_type: EAuthType,
+    @Headers('eauth-user-id') userId: string,
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    if (eauth_type != EAuthType.user) {
+      throw new BadRequestException(
+        efail('Only user', UserCodes.USER_DUPLICATE),
+      );
+    }
+
+    this.logger.log(`GET /users/me -> ${userId}`);
+    return this.usersService.findOne(userId);
   }
 
   /* Получение списка пользователей */

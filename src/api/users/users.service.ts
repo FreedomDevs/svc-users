@@ -138,10 +138,10 @@ export class UsersService {
         UserCodes.USER_FETCHED_OK,
       );
     } catch (error: unknown) {
-      this.logger.error('Failed to create UserResponse', error);
+      this.logger.error('Failed to get user', error);
 
       throw new InternalServerErrorException(
-        efail('Failed to create user response', UserCodes.USER_INTERNAL_ERROR),
+        efail('Failed to get user', UserCodes.USER_INTERNAL_ERROR),
       );
     }
   }

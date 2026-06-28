@@ -1,4 +1,5 @@
 import { ApiCode } from '@common/types/apiCode.type';
+import { UserResponse } from '@/api/users/response';
 
 export type ApiMeta = {
   code: ApiCode;
@@ -12,6 +13,13 @@ export type ApiSuccessResponse<T> = {
   meta: ApiMeta;
 };
 
+export type ApiPaginationSuccessResponse<T, D> = {
+  data: T;
+  message: string;
+  meta: ApiMeta;
+  pagination: D;
+};
+
 export type ApiErrorResponse = {
   error: {
     code: ApiCode;
@@ -19,4 +27,15 @@ export type ApiErrorResponse = {
     details?: unknown[];
   };
   meta: ApiMeta;
+};
+
+export type UsersListResponse = {
+  users: UserResponse[];
+};
+
+export type PaginationResponse = {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
 };

@@ -13,29 +13,20 @@ import {
   Headers,
   BadRequestException,
 } from '@nestjs/common';
-
 import { UsersService } from './users.service';
-
 import { CreateUserDto } from './dto';
 import { UserResponse } from './response';
-
 import { UpdatePermissionsDto } from './dto';
 import { AssignGroupsDto } from '@/api/groups/dto';
 import { efail } from '@common/response/response.helper';
 import { UserCodes } from '@/api/users/users.codes';
-import { ApiSuccessResponse, EAuthType } from '@common/types';
-
-type PaginationResponse = {
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-};
-
-type UsersListResponse = {
-  users: UserResponse[];
-  pagination: PaginationResponse;
-};
+import {
+  ApiPaginationSuccessResponse,
+  ApiSuccessResponse,
+  EAuthType,
+  PaginationResponse,
+  UsersListResponse,
+} from '@common/types';
 
 @Controller('users')
 export class UsersController {
@@ -112,7 +103,9 @@ export class UsersController {
     @Query('search') search?: string,
     @Query('page') page = '1',
     @Query('limit') limit = '10',
-  ): Promise<ApiSuccessResponse<UsersListResponse>> {
+  ): Promise<
+    ApiPaginationSuccessResponse<UsersListResponse, PaginationResponse>
+  > {
     const pageNumber = Number(page);
     const limitNumber = Number(limit);
 

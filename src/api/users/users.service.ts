@@ -8,7 +8,12 @@ import {
 } from '@nestjs/common';
 import { CreateUserDto } from './dto';
 import { UserResponse } from './response';
-import { ApiSuccessResponse } from '@common/types/api-response.type';
+import {
+  ApiPaginationSuccessResponse,
+  ApiSuccessResponse,
+  PaginationResponse,
+  UsersListResponse,
+} from '@common/types/api-response.type';
 import { UserCodes } from './users.codes';
 import { efail, ok } from '@common/response/response.helper';
 import { PrismaService } from '@prisma/prisma.service';
@@ -20,16 +25,6 @@ type UserWithGroups = Prisma.UserGetPayload<{
     groups: true;
   };
 }>;
-
-type UsersListResponse = {
-  users: UserResponse[];
-  pagination: {
-    page: number;
-    pageSize: number;
-    total: number;
-    totalPages: number;
-  };
-};
 
 @Injectable()
 export class UsersService {
@@ -177,7 +172,9 @@ export class UsersService {
     search?: string,
     page = 1,
     pageSize = 10,
-  ): Promise<ApiSuccessResponse<UsersListResponse>> {
+  ): Promise<
+    ApiPaginationSuccessResponse<UsersListResponse, PaginationResponse>
+  > {
     this.validatePagination(page, pageSize);
 
     const where: Prisma.UserWhereInput = search?.trim()
@@ -204,15 +201,15 @@ export class UsersService {
     return ok(
       {
         users: users.map((user) => new UserResponse(user)),
-        pagination: {
-          page,
-          pageSize,
-          total,
-          totalPages: Math.ceil(total / pageSize),
-        },
       },
       'Users list fetched successfully',
       UserCodes.USER_LIST_FETCHED,
+      {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
     );
   }
 

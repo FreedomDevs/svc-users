@@ -1,8 +1,7 @@
-import { ArrayNotEmpty, IsArray, IsString } from 'class-validator';
+import { IsObject } from 'class-validator';
 
-export class UpdatePermissionsDto {
-  @IsArray()
-  @ArrayNotEmpty()
-  @IsString({ each: true })
-  permissions: string[];
+export class UpdateUserPermissionsDto {
+  @IsObject()
+  permissions: Record<string, string[]>;
+  groups?: string[];
 }

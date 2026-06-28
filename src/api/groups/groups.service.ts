@@ -11,6 +11,7 @@ import { CreateGroupDto, UpdateGroupPermissionsDto } from '@/api/groups/dto';
 
 import { ok, efail } from '@common/response/response.helper';
 import { GroupCodes } from './groups.codes';
+import { PermissionsUtil } from '@common/utils';
 
 type GroupWithUsers = Prisma.GroupGetPayload<{
   include: {
@@ -24,30 +25,25 @@ export class GroupsService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  private normalize(value: string): string {
-    return value.trim().toLowerCase();
+  private isUUID(value: string): boolean {
+    return /^[0-9a-fA-F-]{36}$/.test(value);
   }
 
   private async getGroupOrThrow(idOrName: string): Promise<GroupWithUsers> {
-    const groups = await this.prisma.group.findMany({
-      include: { users: true },
-    });
-
-    const target = this.normalize(idOrName);
-
-    let group: GroupWithUsers | undefined;
-
-    for (let i = 0; i < groups.length; i++) {
-      const g = groups[i];
-
-      if (
-        this.normalize(g.id) === target ||
-        this.normalize(g.name) === target
-      ) {
-        group = g;
-        break;
-      }
+    if (!idOrName.trim()) {
+      throw new NotFoundException(
+        efail('Group not found', GroupCodes.GROUP_NOT_FOUND),
+      );
     }
+
+    const group = await this.prisma.group.findFirst({
+      where: this.isUUID(idOrName)
+        ? { id: idOrName }
+        : { name: idOrName.trim() },
+      include: {
+        users: true,
+      },
+    });
 
     if (!group) {
       throw new NotFoundException(
@@ -58,186 +54,111 @@ export class GroupsService {
     return group;
   }
 
+  private serializeGroup(group: GroupWithUsers) {
+    return {
+      id: group.id,
+      name: group.name,
+      permissions: PermissionsUtil.unflatten(group.permissions),
+      users: group.users.map((user) => user.id),
+      createdAt: group.createdAt,
+      updatedAt: group.updatedAt,
+    };
+  }
+
   async create(dto: CreateGroupDto) {
-    const groups = await this.prisma.group.findMany();
+    const name = dto.name?.trim();
 
-    const name = this.normalize(dto.name);
+    if (!name) {
+      throw new BadRequestException(
+        efail('Group name is required', GroupCodes.GROUP_INVALID_DATA),
+      );
+    }
 
-    for (let i = 0; i < groups.length; i++) {
-      if (this.normalize(groups[i].name) === name) {
-        throw new BadRequestException(
-          efail('Group already exists', GroupCodes.GROUP_ALREADY_EXISTS),
-        );
-      }
+    const existing = await this.prisma.group.findUnique({
+      where: {
+        name,
+      },
+    });
+
+    if (existing) {
+      throw new BadRequestException(
+        efail('Group already exists', GroupCodes.GROUP_ALREADY_EXISTS),
+      );
     }
 
     const created = await this.prisma.group.create({
       data: {
-        name: dto.name.trim(),
+        name,
+      },
+      include: {
+        users: true,
       },
     });
 
-    this.logger.log(`Group created: ${created.id}`);
+    this.logger.log(`Group created: ${created.id} (${created.name})`);
 
-    return ok(created, 'Group created', GroupCodes.GROUP_CREATED);
+    return ok(
+      this.serializeGroup(created),
+      'Group created',
+      GroupCodes.GROUP_CREATED,
+    );
   }
 
   async findAll() {
     const groups = await this.prisma.group.findMany({
-      include: { users: true },
-    });
-
-    return ok(groups, 'Groups fetched', GroupCodes.GROUP_FETCHED);
-  }
-
-  async addPermissions(idOrName: string, dto: UpdateGroupPermissionsDto) {
-    const group = await this.getGroupOrThrow(idOrName);
-
-    const uniquePermissions: string[] = [...new Set(dto.permissions)];
-
-    const newPermissions: string[] = [];
-
-    for (let i = 0; i < uniquePermissions.length; i++) {
-      const perm = uniquePermissions[i];
-
-      let exists = false;
-
-      for (let j = 0; j < group.permissions.length; j++) {
-        if (group.permissions[j] === perm) {
-          exists = true;
-          break;
-        }
-      }
-
-      if (!exists) {
-        newPermissions.push(perm);
-      }
-    }
-
-    if (newPermissions.length === 0) {
-      throw new BadRequestException(
-        efail('Permissions already exist', GroupCodes.GROUP_PERMISSION_EXISTS),
-      );
-    }
-
-    const updated = await this.prisma.group.update({
-      where: { id: group.id },
-      data: {
-        permissions: [...group.permissions, ...newPermissions],
+      include: {
+        users: true,
       },
     });
 
-    return ok(updated, 'Permissions added', GroupCodes.GROUP_UPDATED);
+    return ok(
+      groups.map((group) => this.serializeGroup(group)),
+      'Groups fetched',
+      GroupCodes.GROUP_FETCHED,
+    );
   }
 
-  async removePermissions(idOrName: string, dto: UpdateGroupPermissionsDto) {
+  async updatePermissions(idOrName: string, dto: UpdateGroupPermissionsDto) {
     const group = await this.getGroupOrThrow(idOrName);
 
-    const removable: string[] = [];
-
-    for (let i = 0; i < dto.permissions.length; i++) {
-      const perm = dto.permissions[i];
-
-      for (let j = 0; j < group.permissions.length; j++) {
-        if (group.permissions[j] === perm) {
-          removable.push(perm);
-          break;
-        }
-      }
-    }
-
-    if (removable.length === 0) {
-      throw new BadRequestException(
-        efail('Permissions not found', GroupCodes.GROUP_PERMISSION_NOT_FOUND),
-      );
-    }
+    const flatPermissions = PermissionsUtil.flatten(dto.permissions);
 
     const updated = await this.prisma.group.update({
-      where: { id: group.id },
+      where: {
+        id: group.id,
+      },
       data: {
-        permissions: group.permissions.filter((p) => !removable.includes(p)),
+        permissions: flatPermissions,
+      },
+      include: {
+        users: true,
       },
     });
 
-    return ok(updated, 'Permissions removed', GroupCodes.GROUP_UPDATED);
-  }
+    this.logger.log(`Group permissions updated: ${updated.id}`);
 
-  async hasPermission(idOrName: string, permission: string) {
-    const group = await this.getGroupOrThrow(idOrName);
-
-    const target = permission.trim();
-
-    for (let i = 0; i < group.permissions.length; i++) {
-      if (group.permissions[i] === target) {
-        return ok(true, 'Has permission', GroupCodes.GROUP_CHECK);
-      }
-    }
-
-    return ok(false, 'No permission', GroupCodes.GROUP_CHECK);
-  }
-
-  async hasAnyPermissions(idOrName: string, dto: UpdateGroupPermissionsDto) {
-    const group = await this.getGroupOrThrow(idOrName);
-
-    const perms: string[] = dto.permissions;
-
-    for (let i = 0; i < perms.length; i++) {
-      const target = perms[i];
-
-      for (let j = 0; j < group.permissions.length; j++) {
-        if (group.permissions[j] === target) {
-          return ok(true, 'Has any permission', GroupCodes.GROUP_CHECK);
-        }
-      }
-    }
-
-    return ok(false, 'No permissions match', GroupCodes.GROUP_CHECK);
-  }
-
-  async hasAllPermissions(idOrName: string, dto: UpdateGroupPermissionsDto) {
-    const group = await this.getGroupOrThrow(idOrName);
-
-    for (let i = 0; i < dto.permissions.length; i++) {
-      let found = false;
-
-      for (let j = 0; j < group.permissions.length; j++) {
-        if (group.permissions[j] === dto.permissions[i]) {
-          found = true;
-          break;
-        }
-      }
-
-      if (!found) {
-        return ok(false, 'Missing permissions', GroupCodes.GROUP_CHECK);
-      }
-    }
-
-    return ok(true, 'Has all permissions', GroupCodes.GROUP_CHECK);
-  }
-
-  async isUserInGroup(idOrName: string, userId: string) {
-    const group = await this.getGroupOrThrow(idOrName);
-
-    for (let i = 0; i < group.users.length; i++) {
-      const user = group.users[i];
-
-      if (user.id === userId) {
-        return ok(true, 'User in group', GroupCodes.GROUP_CHECK);
-      }
-    }
-
-    return ok(false, 'User not in group', GroupCodes.GROUP_CHECK);
+    return ok(
+      this.serializeGroup(updated),
+      'Group permissions updated',
+      GroupCodes.GROUP_PERMISSIONS_UPDATED,
+    );
   }
 
   async delete(idOrName: string) {
     const group = await this.getGroupOrThrow(idOrName);
 
-    const deleted = await this.prisma.group.delete({
-      where: { id: group.id },
+    await this.prisma.group.delete({
+      where: {
+        id: group.id,
+      },
     });
 
-    this.logger.log(`Group deleted: ${deleted.id}`);
+    this.logger.log(`Group deleted: ${group.id} (${group.name})`);
 
-    return ok(deleted, 'Group deleted', GroupCodes.GROUP_DELETED);
+    return ok(
+      this.serializeGroup(group),
+      'Group deleted',
+      GroupCodes.GROUP_DELETED,
+    );
   }
 }

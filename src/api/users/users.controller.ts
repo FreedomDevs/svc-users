@@ -14,10 +14,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto } from './dto';
+import { CreateUserDto, UpdateUserPermissionsDto } from './dto';
 import { UserResponse } from './response';
-import { UpdatePermissionsDto } from './dto';
-import { AssignGroupsDto } from '@/api/groups/dto';
 import { efail } from '@common/response/response.helper';
 import { UserCodes } from '@/api/users/users.codes';
 import {
@@ -79,6 +77,8 @@ export class UsersController {
     );
   }
 
+  /* Me */
+
   @Get('/me')
   @HttpCode(HttpStatus.OK)
   async me(
@@ -128,55 +128,16 @@ export class UsersController {
     return this.usersService.delete(idOrName);
   }
 
-  /* Добавить permissions */
+  /* Обновление прав и групп*/
 
-  @Put(':idOrName/permissions/add')
+  @Put(':idOrName/permissions')
   @HttpCode(HttpStatus.OK)
-  async addPermissions(
+  async updatePermissions(
     @Param('idOrName') idOrName: string,
-    @Body() dto: UpdatePermissionsDto,
-  ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.logger.log(`PUT /users/${idOrName}/permissions/add`);
+    @Body() dto: UpdateUserPermissionsDto,
+  ) {
+    this.logger.log(`PUT /users/${idOrName}/permissions`);
 
-    return this.usersService.addPermissions(idOrName, dto.permissions);
-  }
-
-  /* Удалить permissions */
-
-  @Put(':idOrName/permissions/remove')
-  @HttpCode(HttpStatus.OK)
-  async removePermissions(
-    @Param('idOrName') idOrName: string,
-    @Body() dto: UpdatePermissionsDto,
-  ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.logger.log(`PUT /users/${idOrName}/permissions/remove`);
-
-    return this.usersService.removePermissions(idOrName, dto.permissions);
-  }
-
-  /* Назначить группы */
-
-  @Put(':idOrName/groups/assign')
-  @HttpCode(HttpStatus.OK)
-  async assignGroups(
-    @Param('idOrName') idOrName: string,
-    @Body() dto: AssignGroupsDto,
-  ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.logger.log(`PUT /users/${idOrName}/groups/assign`);
-
-    return this.usersService.assignGroups(idOrName, dto.groupIds);
-  }
-
-  /* Удалить группы */
-
-  @Put(':idOrName/groups/remove')
-  @HttpCode(HttpStatus.OK)
-  async removeGroups(
-    @Param('idOrName') idOrName: string,
-    @Body() dto: AssignGroupsDto,
-  ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.logger.log(`PUT /users/${idOrName}/groups/remove`);
-
-    return this.usersService.removeGroups(idOrName, dto.groupIds);
+    return this.usersService.updatePermissions(idOrName, dto);
   }
 }

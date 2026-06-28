@@ -6,7 +6,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { CreateUserDto } from './dto';
+import { CreateUserDto, UpdateUserPermissionsDto } from './dto';
 import { UserResponse } from './response';
 import {
   ApiPaginationSuccessResponse,
@@ -19,6 +19,7 @@ import { efail, ok } from '@common/response/response.helper';
 import { PrismaService } from '@prisma/prisma.service';
 import { Prisma } from '@prisma/client';
 import { EAuthType } from '@common/types';
+import { PermissionsUtil } from '@common/utils';
 
 type UserWithGroups = Prisma.UserGetPayload<{
   include: {
@@ -34,17 +35,6 @@ export class UsersService {
 
   private isUUID(value: string): boolean {
     return /^[0-9a-fA-F-]{36}$/.test(value);
-  }
-
-  private validateArray(values: readonly unknown[], field: string): void {
-    if (!Array.isArray(values) || values.length === 0) {
-      throw new BadRequestException(
-        efail(
-          `${field} must be a non-empty array`,
-          UserCodes.USER_INVALID_DATA,
-        ),
-      );
-    }
   }
 
   private validatePagination(page: number, pageSize: number): void {
@@ -227,30 +217,40 @@ export class UsersService {
     return ok(null, 'User deleted successfully', UserCodes.USER_DELETED);
   }
 
-  async addPermissions(
-    idOrName: string,
-    permissions: string[],
-  ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.validateArray(permissions, 'permissions');
-
+  async updatePermissions(idOrName: string, dto: UpdateUserPermissionsDto) {
     const user = await this.getUserOrThrow(idOrName);
 
-    const uniquePermissions = [...new Set(permissions)];
+    let groupConnect:
+      | {
+          set: { id: string }[];
+        }
+      | undefined;
 
-    const newPermissions = uniquePermissions.filter(
-      (permission) => !user.permissions.includes(permission),
-    );
+    if (dto.groups) {
+      const groups = await this.prisma.group.findMany({
+        where: {
+          id: {
+            in: dto.groups,
+          },
+        },
+      });
 
-    if (!newPermissions.length) {
-      throw new BadRequestException(
-        efail('Permissions already assigned', UserCodes.PERMISSIONS_UPDATED),
-      );
+      if (groups.length !== dto.groups.length) {
+        throw new NotFoundException(
+          efail('One or more groups not found', UserCodes.USER_INVALID_DATA),
+        );
+      }
+
+      groupConnect = {
+        set: dto.groups.map((id) => ({ id })),
+      };
     }
 
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        permissions: [...user.permissions, ...newPermissions],
+        permissions: PermissionsUtil.flatten(dto.permissions),
+        ...(groupConnect ? { groups: groupConnect } : {}),
       },
       include: {
         groups: true,
@@ -258,146 +258,12 @@ export class UsersService {
     });
 
     return ok(
-      new UserResponse(updated),
-      'Permissions added',
+      {
+        groups: updated.groups.map((g) => g.name),
+        permissions: PermissionsUtil.unflatten(updated.permissions),
+      },
+      'Permissions updated',
       UserCodes.PERMISSIONS_UPDATED,
-    );
-  }
-
-  async removePermissions(
-    idOrName: string,
-    permissions: string[],
-  ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.validateArray(permissions, 'permissions');
-
-    const user = await this.getUserOrThrow(idOrName);
-
-    const removablePermissions = permissions.filter((permission) =>
-      user.permissions.includes(permission),
-    );
-
-    if (!removablePermissions.length) {
-      throw new BadRequestException(
-        efail('Permissions not found', UserCodes.PERMISSIONS_UPDATED),
-      );
-    }
-
-    const updated = await this.prisma.user.update({
-      where: {
-        id: user.id,
-      },
-      data: {
-        permissions: user.permissions.filter(
-          (permission) => !removablePermissions.includes(permission),
-        ),
-      },
-      include: {
-        groups: true,
-      },
-    });
-
-    return ok(
-      new UserResponse(updated),
-      'Permissions removed',
-      UserCodes.PERMISSIONS_UPDATED,
-    );
-  }
-
-  async assignGroups(
-    idOrName: string,
-    groupIds: string[],
-  ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.validateArray(groupIds, 'groupIds');
-
-    const user = await this.getUserOrThrow(idOrName);
-
-    const uniqueGroupIds = [...new Set(groupIds)];
-
-    const existingGroups = await this.prisma.group.findMany({
-      where: {
-        id: {
-          in: uniqueGroupIds,
-        },
-      },
-    });
-
-    if (existingGroups.length !== uniqueGroupIds.length) {
-      throw new NotFoundException(
-        efail('One or more groups not found', UserCodes.USER_INVALID_DATA),
-      );
-    }
-
-    const assignedGroupIds = user.groups.map((group) => group.id);
-
-    const groupsToAssign = uniqueGroupIds.filter(
-      (groupId) => !assignedGroupIds.includes(groupId),
-    );
-
-    if (!groupsToAssign.length) {
-      throw new BadRequestException(
-        efail('Groups already assigned', UserCodes.GROUPS_UPDATED),
-      );
-    }
-
-    const updated = await this.prisma.user.update({
-      where: {
-        id: user.id,
-      },
-      data: {
-        groups: {
-          connect: groupsToAssign.map((id) => ({ id })),
-        },
-      },
-      include: {
-        groups: true,
-      },
-    });
-
-    return ok(
-      new UserResponse(updated),
-      'Groups assigned',
-      UserCodes.GROUPS_UPDATED,
-    );
-  }
-
-  async removeGroups(
-    idOrName: string,
-    groupIds: string[],
-  ): Promise<ApiSuccessResponse<UserResponse>> {
-    this.validateArray(groupIds, 'groupIds');
-
-    const user = await this.getUserOrThrow(idOrName);
-
-    const assignedGroupIds = user.groups.map((group) => group.id);
-
-    const groupsToRemove = groupIds.filter((groupId) =>
-      assignedGroupIds.includes(groupId),
-    );
-
-    if (!groupsToRemove.length) {
-      throw new BadRequestException(
-        efail('Groups are not assigned to this user', UserCodes.GROUPS_UPDATED),
-      );
-    }
-
-    const updated = await this.prisma.user.update({
-      where: {
-        id: user.id,
-      },
-      data: {
-        groups: {
-          disconnect: groupsToRemove.map((id) => ({ id })),
-        },
-      },
-      include: {
-        groups: true,
-      },
-    });
-
-    return ok(
-      new UserResponse(updated),
-      'Groups removed',
-      UserCodes.GROUPS_UPDATED,
     );
   }
 }

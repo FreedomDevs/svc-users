@@ -1,17 +1,20 @@
 import { Group, Prisma } from '@prisma/client';
+import { PermissionsUtil } from '@common/utils/';
 
 type UserWithGroups = Prisma.UserGetPayload<{
   include: { groups: true };
 }>;
 
-export class UserResponse implements Omit<UserWithGroups, 'password'> {
+export class UserResponse
+  implements Omit<UserWithGroups, 'password' | 'permissions'>
+{
   id: string;
   name: string;
 
-  permissions: string[];
+  permissions: Record<string, string[]>;
   groups: Group[];
 
-  password?: string; // optional!
+  password?: string;
 
   createdAt: Date;
   updatedAt: Date;
@@ -20,7 +23,7 @@ export class UserResponse implements Omit<UserWithGroups, 'password'> {
     this.id = partial.id!;
     this.name = partial.name!;
 
-    this.permissions = partial.permissions ?? [];
+    this.permissions = PermissionsUtil.unflatten(partial.permissions ?? []);
     this.groups = partial.groups ?? [];
 
     this.createdAt = partial.createdAt!;

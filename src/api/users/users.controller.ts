@@ -66,14 +66,26 @@ export class UsersController {
   async findOne(
     @Param('idOrName') idOrName: string,
     @Query('psw') psw?: string,
+    @Headers('eauth-type') eauth_type_raw?: string,
+    @Headers('eauth-user-roles') eauth_roles?: string,
   ): Promise<ApiSuccessResponse<UserResponse>> {
     const includePassword = psw === 'true';
+
+    const roles: string[] = eauth_roles?.trim().split(/\s+/) ?? [];
+
+    const eauth_type: EAuthType | null =
+      eauth_type_raw === undefined ? null : (eauth_type_raw as EAuthType);
 
     this.logger.log(
       `GET /users/${idOrName} -> includePassword=${includePassword}`,
     );
 
-    return this.usersService.findOne(idOrName, includePassword);
+    return this.usersService.findOne(
+      idOrName,
+      includePassword,
+      roles,
+      eauth_type,
+    );
   }
 
   @Get('/me')

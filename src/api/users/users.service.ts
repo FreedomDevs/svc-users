@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   InternalServerErrorException,
   Logger,
@@ -9,9 +10,10 @@ import { CreateUserDto } from './dto';
 import { UserResponse } from './response';
 import { ApiSuccessResponse } from '@common/types/api-response.type';
 import { UserCodes } from './users.codes';
-import { ok, efail } from '@common/response/response.helper';
+import { efail, ok } from '@common/response/response.helper';
 import { PrismaService } from '@prisma/prisma.service';
 import { Prisma } from '@prisma/client';
+import { EAuthType } from '@common/types';
 
 type UserWithGroups = Prisma.UserGetPayload<{
   include: {
@@ -126,8 +128,33 @@ export class UsersService {
   async findOne(
     idOrName: string,
     includePassword = false,
+    eauth_user_roles: string[] | null = null,
+    eauth_type: EAuthType | null = EAuthType.user,
   ): Promise<ApiSuccessResponse<UserResponse>> {
     const user = await this.getUserOrThrow(idOrName);
+
+    if (includePassword) {
+      if (eauth_type !== null) {
+        if (eauth_type === EAuthType.user) {
+          let hasPermission: boolean = false;
+
+          for (const role of eauth_user_roles ?? []) {
+            if (role === 'read_password') {
+              hasPermission = true;
+            }
+          }
+
+          if (!hasPermission) {
+            throw new ForbiddenException(
+              efail(
+                'You do not have permission to read password',
+                UserCodes.USER_FORBIDDEN,
+              ),
+            );
+          }
+        }
+      }
+    }
 
     try {
       const response = new UserResponse(user, includePassword);

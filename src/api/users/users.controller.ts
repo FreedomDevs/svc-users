@@ -77,6 +77,18 @@ export class UsersController {
     );
   }
 
+  /* Получить все права пользователя по serviceName */
+
+  @Get(':idOrName/permissions')
+  @HttpCode(HttpStatus.OK)
+  async findOnePerms(
+    @Param('idOrName') idOrName: string,
+    @Query('psw') serviceName?: string,
+  ): Promise<ApiSuccessResponse<string[]>> {
+    this.logger.log(`GET /users/${idOrName} -> servicename=${serviceName}`);
+    return this.usersService.findOnePerms(idOrName, serviceName);
+  }
+
   /* Me */
 
   @Get('/me')

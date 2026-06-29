@@ -158,6 +158,73 @@ export class UsersService {
     }
   }
 
+  async findOnePerms(
+    idOrName: string,
+    serviceName: string | undefined,
+  ): Promise<ApiSuccessResponse<string[]>> {
+    if (!idOrName || !serviceName) {
+      throw new BadRequestException(
+        efail(
+          'service name and user id is required',
+          UserCodes.USER_INVALID_DATA,
+        ),
+      );
+    }
+
+    const resultPermissions: string[] = [];
+    const resultSortedPerms: string[] = [];
+    const user = await this.getUserOrThrow(idOrName);
+    const getUserGroups = user.groups;
+
+    for (const group of getUserGroups) {
+      for (const perm of group.permissions) {
+        resultPermissions.push(perm);
+      }
+    }
+
+    for (const perm of user.permissions) {
+      resultPermissions.push(perm);
+    }
+
+    for (const perm of resultPermissions) {
+      const res: string[] = perm.split(':');
+      if (!res[0] || !res[1]) continue;
+
+      const service: string = res[0].toLocaleLowerCase().replace(/\s/g, '');
+      const action: string = res[1].toLocaleLowerCase().replace(/\s/g, '');
+
+      const isValidAction: boolean = /^[a-z][a-z0-9_-]*$/i.test(action);
+      if (!isValidAction) continue;
+
+      const isTrash: boolean = ['null', 'undefined', 'nan'].includes(action);
+      if (isTrash) continue;
+
+      if (service === serviceName.toLocaleLowerCase()) {
+        let exists: boolean = false;
+
+        for (const existing of resultSortedPerms) {
+          if (existing.toLocaleLowerCase() === action) {
+            exists = true;
+            break;
+          } else {
+            exists = false;
+          }
+        }
+
+        if (!exists) {
+          if (action === '') continue;
+          resultSortedPerms.push(res[1]);
+        }
+      }
+    }
+
+    return ok(
+      resultSortedPerms,
+      'User perms fetched successful',
+      UserCodes.USER_FETCHED_OK,
+    );
+  }
+
   async findAll(
     search?: string,
     page = 1,

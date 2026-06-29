@@ -83,7 +83,7 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   async findOnePerms(
     @Param('idOrName') idOrName: string,
-    @Query('psw') serviceName?: string,
+    @Query('servicename') serviceName?: string,
   ): Promise<ApiSuccessResponse<string[]>> {
     this.logger.log(`GET /users/${idOrName} -> servicename=${serviceName}`);
     return this.usersService.findOnePerms(idOrName, serviceName);

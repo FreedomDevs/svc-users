@@ -14,7 +14,12 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserPermissionsDto } from './dto';
+import {
+  CreateUserDto,
+  UpdateNameDto,
+  UpdatePasswordDto,
+  UpdateUserPermissionsDto,
+} from './dto';
 import { UserResponse } from './response';
 import { efail } from '@common/response/response.helper';
 import { UserCodes } from '@/api/users/users.codes';
@@ -138,6 +143,32 @@ export class UsersController {
     this.logger.log(`DELETE /users/${idOrName}`);
 
     return this.usersService.delete(idOrName);
+  }
+
+  /* Обновить пароль пользователя */
+
+  @Put(':idOrName/password')
+  @HttpCode(HttpStatus.OK)
+  async updatePassword(
+    @Param('idOrName') idOrName: string,
+    @Body() dto: UpdatePasswordDto,
+  ): Promise<ApiSuccessResponse<{ password: string }>> {
+    this.logger.log(`PUT /users/${idOrName}/password`);
+
+    return this.usersService.updatePassword(idOrName, dto.password);
+  }
+
+  /* Обновить имя пользователя */
+
+  @Put(':idOrName/name')
+  @HttpCode(HttpStatus.OK)
+  async updateName(
+    @Param('idOrName') idOrName: string,
+    @Body() dto: UpdateNameDto,
+  ): Promise<ApiSuccessResponse<{ name: string }>> {
+    this.logger.log(`PUT /users/${idOrName}/password`);
+
+    return this.usersService.updateName(idOrName, dto.name);
   }
 
   /* Обновление прав и групп*/

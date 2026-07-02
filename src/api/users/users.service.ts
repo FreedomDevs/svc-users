@@ -333,4 +333,63 @@ export class UsersService {
       UserCodes.PERMISSIONS_UPDATED,
     );
   }
+
+  async updatePassword(
+    idOrName: string,
+    newPassword: string,
+  ): Promise<ApiSuccessResponse<{ password: string }>> {
+    if (!newPassword || !idOrName) {
+      throw new BadRequestException(
+        efail(
+          'newPassword and user id is required',
+          UserCodes.USER_INVALID_DATA,
+        ),
+      );
+    }
+
+    const user = await this.getUserOrThrow(idOrName);
+
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: newPassword,
+      },
+    });
+
+    return ok(
+      {
+        password: updated.password,
+      },
+      'Password updated',
+      UserCodes.PASSWORD_UPDATED,
+    );
+  }
+
+  async updateName(
+    idOrName: string,
+    newName: string,
+  ): Promise<ApiSuccessResponse<{ name: string }>> {
+    if (!newName || !idOrName) {
+      throw new BadRequestException(
+        efail('name and user id is required', UserCodes.USER_INVALID_DATA),
+      );
+    }
+
+    const user = await this.getUserOrThrow(idOrName);
+
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        name: newName,
+      },
+    });
+
+    return ok(
+      {
+        name: updated.name,
+      },
+      'Name updated',
+      UserCodes.NAME_UPDATED,
+    );
+  }
 }

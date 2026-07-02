@@ -35,8 +35,7 @@ DATABASE_URL="postgresql://user:password@localhost:5432/dbname"
 
 ## ⚙️ документация
 
-Актуальная документация доступна в основном репозитории:
-👉 [svcLibs](https://github.com/FreedomDevs/svcLibs/blob/master/docs/svc-users.md)
+Актуальная документация доступна в основном репозитории: [svcLibs](https://github.com/FreedomDevs/svcLibs/blob/master/docs/svc-users.md)
 
 ---
 

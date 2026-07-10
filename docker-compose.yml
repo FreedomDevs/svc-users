@@ -11,6 +11,7 @@ services:
       - ./tsconfig.json:/app/tsconfig.json:ro
       - ./tsconfig.build.json:/app/tsconfig.build.json:ro
       - ./eslint.config.mjs:/app/eslint.config.mjs:ro
+      - ./prisma.config.ts:/app/prisma.config.ts:ro
       - ./jest.config.js:/app/jest.config.js:ro
       - ./.env:/app/.env:ro
       - ./package.json:/app/package.json:ro
@@ -19,6 +20,7 @@ services:
     cap_add:
       - NET_BIND_SERVICE
     environment:
+      DATABASE_URL: "postgresql://postgres:postgres@[fd98:2dd6:8f48:1d99:dc28:e6e1::3]:5432/mydb"
       PORT: 80
 
     networks:

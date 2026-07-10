@@ -13,7 +13,7 @@ RUN --mount=type=bind,source=package-lock.json,target=package-lock.json \
 COPY src ./src
 COPY prisma ./prisma
 COPY test ./test
-COPY eslint.config.mjs tsconfig.build.json tsconfig.json ./
+COPY eslint.config.mjs tsconfig.build.json tsconfig.json prisma.config.ts ./
 RUN npx prisma generate
 RUN npm run build
 

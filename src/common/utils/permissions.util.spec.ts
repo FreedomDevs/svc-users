@@ -48,6 +48,7 @@ describe('PermissionsUtil', () => {
     it('should ignore non-array values', () => {
       expect(
         PermissionsUtil.flatten({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
           users: 'read' as any,
           admin: ['delete'],
         }),

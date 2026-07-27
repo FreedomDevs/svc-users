@@ -1,21 +1,27 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from './users.service';
 import { PrismaService } from '@prisma/prisma.service';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { UserResponse } from './response';
 import { UserCodes } from './users.codes';
-import { CreateUserDto } from './dto';
+import { CreateUserDto, UpdateUserPermissionsDto } from './dto';
+import { EAuthType } from '@common/types';
 
-type MockPrisma = Partial<PrismaService> & {
+type MockPrisma = {
   user: {
     findUnique: jest.Mock;
-    create: jest.Mock;
     findFirst: jest.Mock;
+    create: jest.Mock;
     update: jest.Mock;
     delete: jest.Mock;
     findMany: jest.Mock;
     count: jest.Mock;
   };
+
+  group: {
+    findMany: jest.Mock;
+  };
+
   $transaction: jest.Mock;
 };
 
@@ -23,42 +29,63 @@ describe('UsersService', () => {
   let service: UsersService;
   let prisma: MockPrisma;
 
+  const mockGroup = {
+    id: 'group-id',
+    name: 'Admin',
+    permissions: ['users:read'],
+    users: [],
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
   const mockUser = {
     id: 'uuid-1234',
     name: 'testuser',
     password: 'password',
-    // roles: ['USER'] as Roles[],
+    permissions: ['users:write'],
+    groups: [],
     createdAt: new Date(),
     updatedAt: new Date(),
   };
 
   beforeEach(async () => {
-    // Мокируем только используемые методы
-    const mockUserDelegate = {
-      findUnique: jest.fn(),
-      findFirst: jest.fn(),
-      create: jest.fn(),
-      update: jest.fn(),
-      delete: jest.fn(),
-      findMany: jest.fn(),
-      count: jest.fn(),
-    };
-
-    // Преобразуем через 'unknown' к UserDelegate, чтобы TS не ругался
     prisma = {
-      user: mockUserDelegate as unknown as (typeof prisma)['user'],
+      user: {
+        findUnique: jest.fn(),
+        findFirst: jest.fn(),
+        create: jest.fn(),
+        update: jest.fn(),
+        delete: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+      },
+
+      group: {
+        findMany: jest.fn(),
+      },
+
       $transaction: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [UsersService, { provide: PrismaService, useValue: prisma }],
+      providers: [
+        UsersService,
+        {
+          provide: PrismaService,
+          useValue: prisma,
+        },
+      ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
   });
 
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
   describe('create', () => {
-    it('should create a new user', async () => {
+    it('should create user', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.create.mockResolvedValue(mockUser);
 
@@ -69,57 +96,146 @@ describe('UsersService', () => {
 
       expect(result.data).toBeInstanceOf(UserResponse);
       expect(result.meta.code).toBe(UserCodes.USER_CREATED);
+
       expect(prisma.user.create).toHaveBeenCalledWith({
-        data: { name: 'testuser', password: 'password', roles: ['USER'] },
+        data: {
+          name: 'testuser',
+          password: 'password',
+        },
       });
     });
 
-    it('should throw if user already exists', async () => {
+    it('should trim username', async () => {
+      prisma.user.findUnique.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue(mockUser);
+
+      await service.create({
+        name: '  testuser  ',
+        password: 'password',
+      } as CreateUserDto);
+
+      expect(prisma.user.findUnique).toHaveBeenCalledWith({
+        where: {
+          name: 'testuser',
+        },
+      });
+
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: {
+          name: 'testuser',
+          password: 'password',
+        },
+      });
+    });
+
+    it('should throw if user exists', async () => {
       prisma.user.findUnique.mockResolvedValue(mockUser);
 
       await expect(
         service.create({
           name: 'testuser',
           password: 'password',
-        } as CreateUserDto),
+        }),
       ).rejects.toThrow(BadRequestException);
     });
 
-    it('should throw if name or password missing', async () => {
+    it('should throw if name missing', async () => {
       await expect(
-        service.create({ name: '', password: '' } as CreateUserDto),
+        service.create({
+          name: '',
+          password: 'password',
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw if password missing', async () => {
+      await expect(
+        service.create({
+          name: 'user',
+          password: '',
+        }),
       ).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('findOne', () => {
-    it('should return a user', async () => {
+    it('should return user', async () => {
       jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
 
-      const res = await service.findOne('uuid-1234', false);
-      expect(res.data).toBeInstanceOf(UserResponse);
-      expect(res.meta.code).toBe(UserCodes.USER_FETCHED_OK);
+      const result = await service.findOne('uuid');
+
+      expect(result.data).toBeInstanceOf(UserResponse);
+      expect(result.data.password).toBeUndefined();
+      expect(result.meta.code).toBe(UserCodes.USER_FETCHED_OK);
     });
 
-    it('should throw if idOrName not provided', async () => {
-      await expect(service.findOne('', false)).rejects.toThrow(
-        BadRequestException,
+    it('should include password for service auth', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
+
+      const result = await service.findOne(
+        'uuid',
+        true,
+        null,
+        EAuthType.server,
       );
+
+      expect(result.data.password).toBe('password');
+    });
+
+    it('should include password when user has permission', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
+
+      const result = await service.findOne(
+        'uuid',
+        true,
+        ['read_password'],
+        EAuthType.user,
+      );
+
+      expect(result.data.password).toBe('password');
+    });
+
+    it('should forbid reading password', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
+
+      await expect(
+        service.findOne('uuid', true, ['users:read'], EAuthType.user),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw if identifier empty', async () => {
+      await expect(service.findOne('')).rejects.toThrow(BadRequestException);
     });
   });
 
   describe('findAll', () => {
-    it('should return a list of users with pagination', async () => {
+    it('should return paginated users', async () => {
       prisma.$transaction.mockResolvedValue([[mockUser], 1]);
 
-      const res = await service.findAll(undefined, 1, 10);
-      expect(res.data.users[0]).toBeInstanceOf(UserResponse);
-      expect(res.data.pagination.total).toBe(1);
-      expect(res.meta.code).toBe(UserCodes.USER_LIST_FETCHED);
+      const result = await service.findAll(undefined, 1, 10);
+
+      expect(result.data.users).toHaveLength(1);
+      expect(result.data.users[0]).toBeInstanceOf(UserResponse);
+
+      expect(result.meta.code).toBe(UserCodes.USER_LIST_FETCHED);
     });
 
-    it('should throw if invalid pagination', async () => {
-      await expect(service.findAll(undefined, 0, 0)).rejects.toThrow(
+    it('should search by name', async () => {
+      prisma.$transaction.mockResolvedValue([[mockUser], 1]);
+
+      await service.findAll('test', 1, 10);
+
+      expect(prisma.$transaction).toHaveBeenCalled();
+    });
+
+    it('should reject invalid page', async () => {
+      await expect(service.findAll(undefined, 0, 10)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should reject invalid page size', async () => {
+      await expect(service.findAll(undefined, 1, 0)).rejects.toThrow(
         BadRequestException,
       );
     });
@@ -128,65 +244,238 @@ describe('UsersService', () => {
   describe('delete', () => {
     it('should delete user', async () => {
       jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
+
       prisma.user.delete.mockResolvedValue(mockUser);
 
-      const res = await service.delete('uuid-1234');
-      expect(res.meta.code).toBe(UserCodes.USER_DELETED);
+      const result = await service.delete('uuid');
+
       expect(prisma.user.delete).toHaveBeenCalledWith({
-        where: { id: mockUser.id },
+        where: {
+          id: mockUser.id,
+        },
       });
+
+      expect(result.meta.code).toBe(UserCodes.USER_DELETED);
     });
   });
 
-  // describe('hasRole', () => {
-  //   it('should return role status', async () => {
-  //     jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
-  //     const res = await service.hasRole('uuid-1234', ['USER', 'ADMIN']);
-  //     expect(res.data['USER']).toBe(true);
-  //     expect(res.data['ADMIN']).toBe(false);
-  //   });
-  // });
+  describe('updateName', () => {
+    it('should update name', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
 
-  // describe('addRoles', () => {
-  //   it('should add new roles', async () => {
-  //     jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
-  //     prisma.user.update.mockResolvedValue({
-  //       ...mockUser,
-  //       roles: ['USER', 'ADMIN'],
-  //     });
-  //
-  //     const res = await service.addRoles('uuid-1234', ['ADMIN']);
-  //     expect(res.data.roles).toContain('ADMIN');
-  //     expect(res.meta.code).toBe(UserCodes.ROLES_UPDATED);
-  //   });
-  //
-  //   it('should throw if all roles already exist', async () => {
-  //     jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
-  //     await expect(service.addRoles('uuid-1234', ['USER'])).rejects.toThrow(
-  //       BadRequestException,
-  //     );
-  //   });
-  // });
+      prisma.user.update.mockResolvedValue({
+        ...mockUser,
+        name: 'newName',
+      });
 
-  // describe('removeRoles', () => {
-  //   it('should remove roles', async () => {
-  //     jest
-  //       .spyOn(service as any, 'getUserOrThrow')
-  //       .mockResolvedValue({ ...mockUser, roles: ['USER', 'ADMIN'] });
-  //     prisma.user.update.mockResolvedValue({ ...mockUser, roles: ['USER'] });
-  //
-  //     const res = await service.removeRoles('uuid-1234', ['ADMIN']);
-  //     expect(res.data.roles).not.toContain('ADMIN');
-  //     expect(res.meta.code).toBe(UserCodes.ROLES_UPDATED);
-  //   });
-  //
-  //   it('should throw if trying to remove all roles', async () => {
-  //     jest
-  //       .spyOn(service as any, 'getUserOrThrow')
-  //       .mockResolvedValue({ ...mockUser, roles: ['USER'] });
-  //     await expect(service.removeRoles('uuid-1234', ['USER'])).rejects.toThrow(
-  //       BadRequestException,
-  //     );
-  //   });
-  // });
+      const result = await service.updateName('uuid', 'newName');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: {
+          id: mockUser.id,
+        },
+        data: {
+          name: 'newName',
+        },
+      });
+
+      expect(result.data.name).toBe('newName');
+      expect(result.meta.code).toBe(UserCodes.NAME_UPDATED);
+    });
+
+    it('should throw when name is empty', async () => {
+      await expect(service.updateName('uuid', '')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw when id is empty', async () => {
+      await expect(service.updateName('', 'newName')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('updatePassword', () => {
+    it('should update password', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
+
+      prisma.user.update.mockResolvedValue({
+        ...mockUser,
+        password: 'newPassword',
+      });
+
+      const result = await service.updatePassword('uuid', 'newPassword');
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: {
+          id: mockUser.id,
+        },
+        data: {
+          password: 'newPassword',
+        },
+      });
+
+      expect(result.data.password).toBe('newPassword');
+      expect(result.meta.code).toBe(UserCodes.PASSWORD_UPDATED);
+    });
+
+    it('should throw when password is empty', async () => {
+      await expect(service.updatePassword('uuid', '')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw when id is empty', async () => {
+      await expect(service.updatePassword('', 'password')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('updatePermissions', () => {
+    it('should update permissions and groups', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
+
+      prisma.group.findMany.mockResolvedValue([mockGroup]);
+
+      prisma.user.update.mockResolvedValue({
+        ...mockUser,
+        permissions: ['users:read', 'users:write'],
+        groups: [mockGroup],
+      });
+
+      const dto: UpdateUserPermissionsDto = {
+        permissions: {
+          users: ['read', 'write'],
+        },
+        groups: [mockGroup.id],
+      };
+
+      const result = await service.updatePermissions('uuid', dto);
+
+      expect(prisma.group.findMany).toHaveBeenCalledWith({
+        where: {
+          id: {
+            in: [mockGroup.id],
+          },
+        },
+      });
+
+      expect(prisma.user.update).toHaveBeenCalled();
+
+      expect(result.meta.code).toBe(UserCodes.PERMISSIONS_UPDATED);
+
+      expect(result.data.groups).toEqual(['Admin']);
+
+      expect(result.data.permissions).toEqual({
+        users: ['read', 'write'],
+      });
+    });
+
+    it('should update only permissions when groups are omitted', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
+
+      prisma.user.update.mockResolvedValue({
+        ...mockUser,
+        permissions: ['users:read'],
+        groups: [],
+      });
+
+      await service.updatePermissions('uuid', {
+        permissions: {
+          users: ['read'],
+        },
+      });
+
+      expect(prisma.group.findMany).not.toHaveBeenCalled();
+      expect(prisma.user.update).toHaveBeenCalled();
+    });
+
+    it('should throw if one group does not exist', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue(mockUser);
+
+      prisma.group.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.updatePermissions('uuid', {
+          permissions: {},
+          groups: ['missing-group'],
+        }),
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('findOnePerms', () => {
+    it('should return merged permissions', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue({
+        ...mockUser,
+        permissions: ['users:write', 'users:read'],
+        groups: [
+          {
+            ...mockGroup,
+            permissions: ['users:read', 'users:delete', 'other:test'],
+          },
+        ],
+      });
+
+      const result = await service.findOnePerms('uuid', 'users');
+
+      expect(result.meta.code).toBe(UserCodes.USER_FETCHED_OK);
+
+      expect(result.data).toEqual(
+        expect.arrayContaining(['read', 'write', 'delete']),
+      );
+
+      expect(result.data).toHaveLength(3);
+    });
+
+    it('should return empty array when service has no permissions', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue({
+        ...mockUser,
+        permissions: ['users:read'],
+        groups: [],
+      });
+
+      const result = await service.findOnePerms('uuid', 'billing');
+
+      expect(result.data).toEqual([]);
+    });
+
+    it('should throw when service name is missing', async () => {
+      await expect(service.findOnePerms('uuid', undefined)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should throw when user id is missing', async () => {
+      await expect(service.findOnePerms('', 'users')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('should ignore invalid permissions', async () => {
+      jest.spyOn(service as any, 'getUserOrThrow').mockResolvedValue({
+        ...mockUser,
+        permissions: [
+          '',
+          'users:',
+          ':read',
+          'users:read',
+          'users:   ',
+          'users:write',
+          'users:undefined',
+          'users:null',
+        ],
+        groups: [],
+      });
+
+      const result = await service.findOnePerms('uuid', 'users');
+
+      expect(result.data).toEqual(expect.arrayContaining(['read', 'write']));
+
+      expect(result.data).not.toContain('null');
+      expect(result.data).not.toContain('undefined');
+    });
+  });
 });

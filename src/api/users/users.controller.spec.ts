@@ -89,25 +89,4 @@ describe('UsersController', () => {
     expect(res.meta.code).toBe(UserCodes.USER_DELETED);
   });
 
-  // it('should check roles', async () => {
-  //   const res = await controller.hasRoles('uuid-1234', 'USER,ADMIN');
-  //   expect(service.hasRole).toHaveBeenCalledWith('uuid-1234', [
-  //     'USER',
-  //     'ADMIN',
-  //   ]);
-  //   expect(res.data['USER']).toBe(true);
-  //   expect(res.data['ADMIN']).toBe(false);
-  // });
-  //
-  // it('should add roles', async () => {
-  //   const res = await controller.addRoles('uuid-1234', ['ADMIN']);
-  //   expect(service.addRoles).toHaveBeenCalledWith('uuid-1234', ['ADMIN']);
-  //   expect(res.data.roles).toContain('ADMIN');
-  // });
-  //
-  // it('should remove roles', async () => {
-  //   const res = await controller.removeRoles('uuid-1234', ['ADMIN']);
-  //   expect(service.removeRoles).toHaveBeenCalledWith('uuid-1234', ['ADMIN']);
-  //   expect(res.data.roles).not.toContain('ADMIN');
-  // });
 });

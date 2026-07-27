@@ -53,6 +53,24 @@ export class UsersController {
     return this.usersService.create(createUserDto);
   }
 
+  /* Me */
+
+  @Get('/me')
+  @HttpCode(HttpStatus.OK)
+  async me(
+    @Headers('eauth-type') eauth_type: EAuthType,
+    @Headers('eauth-user-id') userId: string,
+  ): Promise<ApiSuccessResponse<UserResponse>> {
+    if (eauth_type != EAuthType.user) {
+      throw new BadRequestException(
+        efail('Only user', UserCodes.USER_INVALID_DATA),
+      );
+    }
+
+    this.logger.log(`GET /users/me -> ${userId}`);
+    return this.usersService.findOne(userId);
+  }
+
   /* Получение одного пользователя */
 
   @Get(':idOrName')
@@ -92,24 +110,6 @@ export class UsersController {
   ): Promise<ApiSuccessResponse<string[]>> {
     this.logger.log(`GET /users/${idOrName} -> servicename=${serviceName}`);
     return this.usersService.findOnePerms(idOrName, serviceName);
-  }
-
-  /* Me */
-
-  @Get('/me')
-  @HttpCode(HttpStatus.OK)
-  async me(
-    @Headers('eauth-type') eauth_type: EAuthType,
-    @Headers('eauth-user-id') userId: string,
-  ): Promise<ApiSuccessResponse<UserResponse>> {
-    if (eauth_type != EAuthType.user) {
-      throw new BadRequestException(
-        efail('Only user', UserCodes.USER_INVALID_DATA),
-      );
-    }
-
-    this.logger.log(`GET /users/me -> ${userId}`);
-    return this.usersService.findOne(userId);
   }
 
   /* Получение списка пользователей */

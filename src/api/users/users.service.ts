@@ -98,6 +98,11 @@ export class UsersService {
       data: {
         name: name.trim(),
         password,
+        groups: {
+          connect: {
+            name: 'User',
+          },
+        },
       },
     });
 

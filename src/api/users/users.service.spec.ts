@@ -101,6 +101,11 @@ describe('UsersService', () => {
         data: {
           name: 'testuser',
           password: 'password',
+          groups: {
+            connect: {
+              name: 'User',
+            },
+          },
         },
       });
     });
@@ -124,6 +129,11 @@ describe('UsersService', () => {
         data: {
           name: 'testuser',
           password: 'password',
+          groups: {
+            connect: {
+              name: 'User',
+            },
+          },
         },
       });
     });

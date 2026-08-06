@@ -28,6 +28,7 @@ export class PrismaService
 
     try {
       await this.$connect();
+      await this.$queryRaw`SELECT 1`;
       this.logger.log('✅ Database connection established successfully.');
     } catch (error) {
       this.logger.error('❌ Failed to establish database connection.', error);

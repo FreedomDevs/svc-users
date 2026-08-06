@@ -8,6 +8,9 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: mydb
 
+    ports:
+      - "5432:5432"
+
     networks:
       shared-net:
         ipv6_address: fd98:2dd6:8f48:1d99:dc28:e6e1::3

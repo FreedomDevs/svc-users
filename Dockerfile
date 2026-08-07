@@ -34,4 +34,4 @@ RUN --mount=type=bind,source=package.json,target=package.json \
   cp -r /builder/node_modules/.prisma/client ./node_modules/.prisma/ && \
   rm -rf /root/.npm/
 
-CMD ["sh", "-c", "export NODE_ENV=production && ./node_modules/.bin/prisma db push && exec node dist/main.js"]
+CMD ["sh", "-c", "export NODE_ENV=production && ./node_modules/.bin/prisma db push && exec node dist/src/main.js"]
